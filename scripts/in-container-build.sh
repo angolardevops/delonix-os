@@ -213,58 +213,68 @@ fi
 # A prova disto foi a data da própria base de dados: o pacman preserva o
 # `Last-Modified` do servidor, e a extra.db dentro do livefs estava datada de
 # 8 de Julho — a data exacta do mirror atrasado, um mês depois.
-CHROOT_BASE=/var/lib/manjaro-tools/buildiso/$EDITION/x86_64
-if [[ -d $CHROOT_BASE ]]; then
-    log "a propagar os mirrors sincronizados para os chroots existentes"
+# O caminho leva o nome do PERFIL, não o da edição. Escrevi $EDITION aqui e o
+# `[[ -d ]]` deu falso, por isso todo este bloco foi saltado EM SILÊNCIO — e a
+# fase live voltou a falhar exactamente da mesma maneira, duas vezes. Daí, agora,
+# procurar o directório em vez de o adivinhar, e ABORTAR se não o encontrar.
+CHROOT_BASE=$(find /var/lib/manjaro-tools/buildiso -maxdepth 2 -type d -name x86_64 2>/dev/null | head -1)
+
+if [[ -z $CHROOT_BASE ]]; then
+    log "sem chroots anteriores — serão criados agora com o mirrorlist actual"
+else
+    log "a propagar os mirrors para os chroots em $CHROOT_BASE"
+    encontrados=0
     for fs in rootfs desktopfs livefs; do
-        [[ -d $CHROOT_BASE/$fs/etc/pacman.d ]] || continue
-        cp /etc/pacman.d/mirrorlist "$CHROOT_BASE/$fs/etc/pacman.d/mirrorlist"
-        # E as bases de dados já descarregadas do mirror mau têm de sair, senão
-        # o pacman considera-as actuais e nunca chega a usar os mirrors novos.
+        [[ -d $CHROOT_BASE/$fs ]] || continue
+        install -Dm644 /etc/pacman.d/mirrorlist "$CHROOT_BASE/$fs/etc/pacman.d/mirrorlist"
+        # As dbs já descarregadas do mirror atrasado TÊM de sair: o pacman
+        # considera-as actuais e nunca chega a usar os mirrors novos. A data
+        # delas é a do servidor, por isso dá para ver de onde vieram.
         rm -f "$CHROOT_BASE/$fs"/var/lib/pacman/sync/{core,extra,multilib}.db
-        log "  $fs: mirrorlist actualizado, dbs antigas removidas"
+        ((encontrados++))
+        log "  $fs: mirrorlist substituído, dbs antigas apagadas"
     done
-fi
-
-# --- guarda de compatibilidade manjaro-tools ↔ pacotes -------------------------
-# O manjaro-tools invoca binários DENTRO do chroot por caminho absoluto. Se a
-# versão do manjaro-tools e a dos pacotes não corresponderem, o build morre lá à
-# frente com um "No such file or directory" que não aponta para a causa.
-#
-# Aqui perguntamos, ANTES de começar: os binários que o manjaro-tools vai chamar
-# existem em algum pacote que vamos instalar? Custa segundos e substitui uma
-# hora de build seguida de um erro enigmático.
-log "a confirmar que o manjaro-tools e os pacotes falam a mesma língua"
-pacman -Fy >/dev/null 2>&1 || true
-falta_bin=0
-for bin in $(grep -rhoE '/usr/bin/manjaro-[a-z-]+' /usr/lib/manjaro-tools/*.sh 2>/dev/null | sort -u); do
-    if pacman -F "${bin#/}" >/dev/null 2>&1; then
-        log "  ok: $bin ($(pacman -F "${bin#/}" 2>/dev/null | head -1 | awk '{print $1}'))"
-    else
-        log "  ERRO: o manjaro-tools chama $bin e NENHUM pacote o fornece"
-        falta_bin=1
+    if (( encontrados == 0 )); then
+        log "ERRO: $CHROOT_BASE existe mas não tem rootfs/desktopfs/livefs."
+        log "      Não vou construir às cegas — corre 'make clean-live' ou --clean."
+        exit 1
     fi
-done
-if (( falta_bin )); then
-    cat >&2 <<'AVISO'
 
-  O manjaro-tools instalado espera binários que os pacotes desta branch não
-  trazem. Quase sempre é um mirror atrasado a servir versões antigas: foi
-  exactamente isto que deu, a 2026-08-15,
+    # Trocar o mirrorlist não desfaz o que já está INSTALADO. Se o livefs herdou
+    # um manjaro-live-* de uma tentativa com o mirror atrasado, o pacman vê-o
+    # como satisfeito (`--needed`) e não o actualiza — e a fase live volta a
+    # falhar exactamente na mesma linha. Melhor dizê-lo do que construir por cima.
+    if compgen -G "$CHROOT_BASE/livefs/var/lib/pacman/local/manjaro-live-*" >/dev/null; then
+        instalado=$(basename "$(echo "$CHROOT_BASE"/livefs/var/lib/pacman/local/manjaro-live-base-*)")
+        if [[ $instalado != *-2026* ]]; then
+            cat >&2 <<AVISO
+
+  O livefs tem $instalado instalado, de uma tentativa
+  anterior com um mirror atrasado. O pacman não o vai actualizar (--needed
+  considera-o satisfeito) e a fase live falha outra vez em:
 
       chroot: failed to run command '/usr/bin/manjaro-live-setup'
 
-  porque o mirror servia manjaro-live-base de 2024, que instala
-  /usr/bin/manjaro-live, e o manjaro-tools de hoje chama manjaro-live-setup.
+  Apaga só essa fase — as fases root e desktop, que demoram horas, ficam:
 
-  Força um mirror actualizado e apaga a fase live:
-
-      make clean-live
-      DELONIX_MIRROR=https://mirror.alpix.eu/manjaro make iso
+      make clean-live && make iso
 
 AVISO
-    exit 1
+            exit 1
+        fi
+    fi
 fi
+
+# E os pacotes que o mirror atrasado deixou na cache partilhada: enquanto lá
+# estiverem, uma db velha resolve para eles e o pacman instala-os sem
+# descarregar nada — sem um único erro de rede para se ver.
+for velho in /var/cache/pacman/pkg/manjaro-live-*.pkg.tar.zst; do
+    [[ -e $velho ]] || continue
+    if [[ $(basename "$velho") != *-2026*  ]]; then
+        rm -f "$velho" "$velho.sig"
+        log "  cache: removido $(basename "$velho") (anterior a 2026)"
+    fi
+done
 
 log "buildiso — perfil $PROFILE (edição $EDITION), kernel $KERNEL"
 buildiso "${BUILD_ARGS[@]}"
