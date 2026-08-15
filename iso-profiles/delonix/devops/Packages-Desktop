@@ -372,7 +372,13 @@ python-pipx
 python-poetry
 python-pynvim
 
-## JavaScript / TypeScript (também é o runtime do claude-code)
+## JavaScript / TypeScript
+# O `nvm` é o que se usa no dia a dia: cada projecto fixa a sua versão de Node
+# e o `.nvmrc` passa a valer alguma coisa. O `nodejs` do sistema fica como chão
+# — garante que há um Node numa máquina sem rede no primeiro arranque, e é dele
+# que dependem pacotes como o `pnpm`. Assim que instalares uma versão com o
+# `nvm`, é essa que ganha o PATH.
+nvm
 nodejs
 npm
 pnpm

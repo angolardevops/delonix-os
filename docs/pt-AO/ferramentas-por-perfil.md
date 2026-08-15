@@ -58,7 +58,7 @@ cada pessoa, de outra forma, redescobre sozinha:
 | **Rust** | `rust` `rust-analyzer` `mold` `sccache` `cargo-watch` `cargo-edit` | O `~/.cargo/config.toml` já usa o linker **mold** e a cache **sccache**. Num projecto grande, ligar deixa de demorar mais do que compilar. Índice esparso ligado. |
 | **Go** | `go` `gopls` `delve` `go-tools` | `GOPATH`/`GOBIN` no `PATH` e `GOTOOLCHAIN=auto`, para um projecto que fixa outra versão de Go a ir buscá-la sozinho. |
 | **Python** | `python` `uv` `ruff` `pipx` `poetry` | O `uv` gere interpretadores e ambientes; o `PIP_REQUIRE_VIRTUALENV` trava instalações globais por acidente. |
-| **Node** | `nodejs` `npm` `pnpm` | Também é o runtime por baixo do Claude Code. |
+| **Node** | `nvm` `nodejs` `npm` `pnpm` | O `nvm` é o que se usa no dia a dia — carregado de forma preguiçosa e a respeitar o `.nvmrc` ao entrar num projecto. O `nodejs` do sistema é o chão, para uma máquina sem rede ter um Node no primeiro arranque. |
 
 Vem o pacote `rust` e não o `rustup`, de propósito: funciona **sem rede**, no
 primeiro arranque. Várias toolchains ficam a um comando —

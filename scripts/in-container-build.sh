@@ -41,10 +41,32 @@ if [[ ! -d $PROFILES_DIR/.git ]]; then
     git clone --depth 1 "$UPSTREAM" "$PROFILES_DIR"
 fi
 
-# --- 3. injectar o perfil Delonix ---------------------------------------------
-log "a injectar o perfil delonix/devops"
-rm -rf "$PROFILES_DIR/delonix"
-rsync -a "$WORK/iso-profiles/delonix/" "$PROFILES_DIR/delonix/"
+# --- 3. injectar o perfil ------------------------------------------------------
+# Há dois casos: o perfil oficial do repositório, ou um perfil gerado pelo
+# `delonixos render` a partir de um inventário YAML do utilizador.
+EDITION=delonix
+PROFILE=devops
+AUR_LIST="$WORK/packages/aur.list"
+
+if [[ -n ${DELONIX_PROFILE_OVERRIDE:-} && -d ${DELONIX_PROFILE_OVERRIDE:-} ]]; then
+    log "a injectar o perfil gerado pelo inventário"
+    meta="$DELONIX_PROFILE_OVERRIDE/metadata.json"
+    if [[ -f $meta ]]; then
+        EDITION=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['edition'])" "$meta")
+        PROFILE=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['profile'])" "$meta")
+        DIST_NAME=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['name'])" "$meta")
+        DIST_VER=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['version'])" "$meta")
+        DIST_CODE=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['codename'])" "$meta")
+        KERNEL=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['kernel'])" "$meta")
+    fi
+    rm -rf "${PROFILES_DIR:?}/${EDITION:?}"
+    rsync -a "$DELONIX_PROFILE_OVERRIDE/$EDITION/" "$PROFILES_DIR/$EDITION/"
+    [[ -f $DELONIX_PROFILE_OVERRIDE/aur.list ]] && AUR_LIST="$DELONIX_PROFILE_OVERRIDE/aur.list"
+else
+    log "a injectar o perfil oficial delonix/devops"
+    rm -rf "$PROFILES_DIR/delonix"
+    rsync -a "$WORK/iso-profiles/delonix/" "$PROFILES_DIR/delonix/"
+fi
 
 # `shared/` traz Packages-Live/Root comuns da Manjaro. Ficamos com o nosso, mas
 # o buildiso espera a directoria — por isso apontamos para a do upstream.
@@ -55,7 +77,7 @@ rsync -a "$WORK/iso-profiles/delonix/" "$PROFILES_DIR/delonix/"
 # AUR, e o pacman do buildiso só instala de repositórios. Compilamo-los aqui.
 AUR_REPO=/var/cache/delonix-aur
 if [[ ${DELONIX_SKIP_AUR:-0} != 1 ]]; then
-    bash "$SCRIPTS/build-aur-repo.sh" "$WORK/packages/aur.list" "$AUR_REPO"
+    bash "$SCRIPTS/build-aur-repo.sh" "$AUR_LIST" "$AUR_REPO"
 
     # O `user-repos.conf` do manjaro-tools recusa repositórios file:// de
     # propósito (check_user_repos_conf → "Using local repositories is not
@@ -75,11 +97,11 @@ EOF
     # O que não compilou é comentado nas listas — mais vale uma ISO sem uma
     # ferramenta do que um build a abortar aos 20 minutos.
     python3 "$SCRIPTS/filter-missing-aur.py" \
-        "$PROFILES_DIR/delonix/devops" "$AUR_REPO"
+        "$PROFILES_DIR/$EDITION/$PROFILE" "$AUR_REPO"
 else
     log "AUR ignorado (DELONIX_SKIP_AUR=1) — a comentar esses pacotes"
     python3 "$SCRIPTS/filter-missing-aur.py" \
-        "$PROFILES_DIR/delonix/devops" /var/empty
+        "$PROFILES_DIR/$EDITION/$PROFILE" /var/empty
 fi
 
 # --- 3c. pacotes da casa (branding, settings, tools) ---------------------------
@@ -102,11 +124,11 @@ done
 # --- 4. binários do Delonix Runtime -------------------------------------------
 log "a buscar binários do Delonix (opcional — falha não trava o build)"
 bash "$SCRIPTS/fetch-delonix-bins.sh" \
-    "$PROFILES_DIR/delonix/devops/desktop-overlay/usr/local/bin" || true
+    "$PROFILES_DIR/$EDITION/$PROFILE/desktop-overlay/usr/local/bin" || true
 
 # --- 5. permissões nos scripts do overlay -------------------------------------
-chmod 0755 "$PROFILES_DIR"/delonix/devops/desktop-overlay/usr/local/bin/* \
-           "$PROFILES_DIR"/delonix/devops/desktop-overlay/usr/local/libexec/* 2>/dev/null || true
+chmod 0755 "$PROFILES_DIR/$EDITION/$PROFILE"/desktop-overlay/usr/local/bin/* \
+           "$PROFILES_DIR/$EDITION/$PROFILE"/desktop-overlay/usr/local/libexec/* 2>/dev/null || true
 
 # --- 6. configuração do manjaro-tools -----------------------------------------
 # Só chaves que o manjaro-tools lê (lib/util.sh). `iso_label` é calculado por
@@ -115,11 +137,11 @@ log "a configurar o manjaro-tools"
 install -Dm644 /dev/stdin /etc/manjaro-tools/manjaro-tools.conf <<EOF
 # gerado pelo build do DelonixOS
 branch=stable
-dist_name="DelonixOS"
-dist_release="1.0"
-dist_codename="Acacia"
+dist_name="${DIST_NAME:-DelonixOS}"
+dist_release="${DIST_VER:-1.0}"
+dist_codename="${DIST_CODE:-Acacia}"
 dist_branding="DELONIX"
-iso_name="delonixos"
+iso_name="$(echo "${DIST_NAME:-delonixos}" | tr 'A-Z ' 'a-z-')"
 iso_compression=zstd
 kernel="$KERNEL"
 EOF
@@ -133,8 +155,8 @@ EOF
 # --- 7. construir --------------------------------------------------------------
 # `-p` recebe o NOME do perfil, não o caminho: o buildiso descobre a edição com
 # `find ${run_dir} -maxdepth 2 -name devops` → delonix/devops.
-log "buildiso — perfil devops (edição delonix), kernel $KERNEL"
-buildiso -f -p devops -k "$KERNEL" -b stable
+log "buildiso — perfil $PROFILE (edição $EDITION), kernel $KERNEL"
+buildiso -f -p "$PROFILE" -k "$KERNEL" -b stable
 
 iso=$(find /var/cache/manjaro-tools/iso -name '*.iso' -printf '%T@ %p\n' 2>/dev/null |
       sort -rn | head -1 | cut -d' ' -f2-)

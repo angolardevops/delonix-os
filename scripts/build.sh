@@ -70,6 +70,15 @@ export DELONIX_SCRIPTS=/tmp/delonix-scripts
 export DELONIX_REPO_DIR=/work
 exec bash /tmp/delonix-scripts/in-container-build.sh --kernel "$1"'
 CMD=(bash -c "$BOOTSTRAP" _ "$KERNEL")
+
+# Perfil gerado pelo `delonixos render` a partir de um inventário YAML. Quando
+# existe, é ele que entra na imagem em vez do perfil oficial.
+OVERRIDE_MOUNT=()
+if [[ -n ${DELONIX_PROFILE_OVERRIDE:-} && -d ${DELONIX_PROFILE_OVERRIDE:-} ]]; then
+    echo "→ perfil vindo do inventário: $DELONIX_PROFILE_OVERRIDE"
+    OVERRIDE_MOUNT=(-v "$DELONIX_PROFILE_OVERRIDE:/profile-override:z"
+                    -e DELONIX_PROFILE_OVERRIDE=/profile-override)
+fi
 (( SHELL_ONLY )) && CMD=(bash)
 
 echo "→ a construir com $ENGINE (imagem: $IMAGE, kernel: $KERNEL)"
@@ -88,6 +97,7 @@ echo "→ a construir com $ENGINE (imagem: $IMAGE, kernel: $KERNEL)"
     -w /work \
     -e DELONIX_KERNEL="$KERNEL" \
     -e DELONIX_SKIP_AUR="${DELONIX_SKIP_AUR:-0}" \
+    "${OVERRIDE_MOUNT[@]}" \
     "$IMAGE" "${CMD[@]}"
 status=$?
 

@@ -1,0 +1,753 @@
+#!/usr/bin/env python3
+"""
+delonixos — constrói o DelonixOS (ou a tua própria distro) a partir de qualquer
+Linux.
+
+    delonixos doctor                     # esta máquina consegue construir?
+    delonixos init --distro ubuntu       # cria um projecto com inventário YAML
+    delonixos validate -f delonixos.yaml
+    delonixos render   -f delonixos.yaml # YAML -> perfil manjaro-tools
+    delonixos build --from ubuntu        # constrói a ISO
+    delonixos build -f delonixos.yaml
+
+Ideia central: a ISO é sempre construída num ambiente Arch/Manjaro (é o
+`buildiso` que a produz), mas *tu* não tens de correr Manjaro. Em Ubuntu,
+Debian, Fedora ou openSUSE isso acontece dentro de um contentor privilegiado;
+em Arch/Manjaro pode correr nativamente. O `--from` diz-nos qual é o teu host,
+para te darmos os comandos certos em vez de um erro genérico.
+
+Sem dependências obrigatórias além do Python 3.8+. Usa o PyYAML se existir; se
+não, um leitor do subconjunto de YAML que o inventário precisa.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
+VERSION = "1.0.0"
+REPO_URL = "https://github.com/angolardevops/delonix-os.git"
+BASE_PROFILE = "delonix/devops"
+
+# --------------------------------------------------------------------------- UI
+RED, GRN, YLW, BLD, DIM, RST = (
+    "\033[31m", "\033[32m", "\033[33m", "\033[1m", "\033[2m", "\033[0m"
+) if sys.stdout.isatty() else ("", "", "", "", "", "")
+
+
+def ok(msg):    print(f"  {GRN}✓{RST} {msg}")
+def bad(msg):   print(f"  {RED}✗{RST} {msg}")
+def warn(msg):  print(f"  {YLW}!{RST} {msg}")
+def info(msg):  print(f"{BLD}→{RST} {msg}")
+def die(msg, code=1):
+    print(f"{RED}✗{RST} {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+# ------------------------------------------------------------------ host distro
+# Cada família tem o seu gestor de pacotes e o seu nome para as mesmas coisas.
+# O objectivo é dar o comando exacto a copiar, não "instala o podman".
+HOSTS = {
+    "ubuntu":   {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
+                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
+    "debian":   {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
+                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
+    "linuxmint": {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
+                  "pkgs": "podman uidmap slirp4netns python3", "native": False},
+    "zorin":    {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
+                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
+    "pop":      {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
+                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
+    "fedora":   {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
+                 "pkgs": "podman python3", "native": False},
+    "rhel":     {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
+                 "pkgs": "podman python3", "native": False},
+    "rocky":    {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
+                 "pkgs": "podman python3", "native": False},
+    "almalinux": {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
+                  "pkgs": "podman python3", "native": False},
+    "opensuse-tumbleweed": {"family": "suse", "install": "sudo zypper install -y {pkgs}",
+                            "pkgs": "podman python3", "native": False},
+    "opensuse-leap": {"family": "suse", "install": "sudo zypper install -y {pkgs}",
+                      "pkgs": "podman python3", "native": False},
+    # Nestes dois o build pode correr sem contentor — já são a família certa.
+    "arch":     {"family": "arch", "install": "sudo pacman -S --needed {pkgs}",
+                 "pkgs": "manjaro-tools-iso git rsync python python-pillow", "native": True},
+    "manjaro":  {"family": "arch", "install": "sudo pacman -S --needed {pkgs}",
+                 "pkgs": "manjaro-tools-iso git rsync python python-pillow", "native": True},
+    "endeavouros": {"family": "arch", "install": "sudo pacman -S --needed {pkgs}",
+                    "pkgs": "manjaro-tools-iso git rsync python python-pillow", "native": True},
+}
+
+
+def detect_host() -> str:
+    """ID do /etc/os-release, com recurso ao ID_LIKE quando a distro é derivada."""
+    data = {}
+    for path in ("/etc/os-release", "/usr/lib/os-release"):
+        if os.path.exists(path):
+            for line in Path(path).read_text().splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    data[k] = v.strip().strip('"')
+            break
+    ident = data.get("ID", "").lower()
+    if ident in HOSTS:
+        return ident
+    for like in data.get("ID_LIKE", "").lower().split():
+        if like in HOSTS:
+            return like
+    return ident or "unknown"
+
+
+def host_spec(name: str) -> dict:
+    spec = HOSTS.get(name)
+    if spec:
+        return spec
+    # Distro desconhecida não é motivo para desistir: com podman, o contentor
+    # trata do resto. Só não sabemos dizer como instalar o podman.
+    return {"family": "unknown", "install": "(instala o podman com o gestor da tua distro)",
+            "pkgs": "podman", "native": False}
+
+
+# -------------------------------------------------------------------- YAML leve
+def _parse_scalar(v: str):
+    v = v.strip()
+    if not v:
+        return None
+    if v[0] in "\"'" and v[-1] == v[0] and len(v) > 1:
+        return v[1:-1]
+    low = v.lower()
+    if low in ("true", "yes", "on"):
+        return True
+    if low in ("false", "no", "off"):
+        return False
+    if low in ("null", "~"):
+        return None
+    if re.fullmatch(r"-?\d+", v):
+        return int(v)
+    if re.fullmatch(r"-?\d+\.\d+", v):
+        return float(v)
+    if v.startswith("[") and v.endswith("]"):
+        inner = v[1:-1].strip()
+        return [_parse_scalar(x) for x in inner.split(",")] if inner else []
+    return v
+
+
+def _mini_yaml(text: str):
+    """
+    Subconjunto de YAML suficiente para o inventário: mapas, listas, escalares,
+    comentários e listas inline. Não suporta âncoras, blocos multi-linha nem
+    fluxos complexos — se precisares disso, instala o PyYAML.
+    """
+    root: dict = {}
+    stack = [(-1, root)]
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        i += 1
+        line = raw.split("#")[0].rstrip() if not raw.strip().startswith("#") else ""
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        content = line.strip()
+
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        parent = stack[-1][1] if stack else root
+
+        if content.startswith("- "):
+            item = content[2:].strip()
+            if not isinstance(parent, list):
+                continue
+            if ":" in item and not item.startswith(("\"", "'")):
+                k, _, v = item.partition(":")
+                obj = {k.strip(): _parse_scalar(v)}
+                parent.append(obj)
+                stack.append((indent, obj))
+            else:
+                parent.append(_parse_scalar(item))
+            continue
+
+        if ":" in content:
+            key, _, value = content.partition(":")
+            key = key.strip()
+            value = value.strip()
+            if value:
+                parent[key] = _parse_scalar(value)
+            else:
+                # o que vem a seguir decide se é mapa ou lista
+                nxt = ""
+                for j in range(i, len(lines)):
+                    if lines[j].strip() and not lines[j].strip().startswith("#"):
+                        nxt = lines[j]
+                        break
+                child = [] if nxt.strip().startswith("- ") else {}
+                parent[key] = child
+                stack.append((indent, child))
+    return root
+
+
+def load_yaml(path: Path):
+    text = path.read_text()
+    try:
+        import yaml  # type: ignore
+        return yaml.safe_load(text)
+    except ImportError:
+        return _mini_yaml(text)
+
+
+# ------------------------------------------------------------------- inventário
+INVENTORY_TEMPLATE = """\
+# {name} — inventário do DelonixOS
+#
+# Este ficheiro é a fonte de verdade da tua distro. O `delonixos build` traduz
+# isto num perfil do manjaro-tools e constrói a ISO.
+#
+#   delonixos validate -f {file}
+#   delonixos build    -f {file}
+apiVersion: delonixos/v1
+kind: Distro
+
+metadata:
+  name: {name}
+  version: 1.0.0
+  codename: Acacia
+  # Aparece no GRUB, no splash e no /etc/{name}-release
+  description: A minha distro para DevOps/SRE/Platform Engineering
+
+spec:
+  # Perfil base. `delonix/devops` traz tudo o que a distro oficial traz — os
+  # teus pacotes são acrescentados por cima. Usa `scratch` para partir do
+  # mínimo (só o Packages-Root da Manjaro).
+  extends: {base}
+
+  host:
+    # Onde ESTE ficheiro vai ser construído. Não muda a ISO: muda apenas os
+    # pré-requisitos que o `delonixos doctor` verifica no teu computador.
+    distro: {distro}
+
+  base:
+    kernel: linux612        # `mhwd-kernel -l` numa Manjaro lista os disponíveis
+    branch: stable          # stable | testing | unstable
+    compression: zstd
+
+  packages:
+    # Pacotes acrescentados. Aceita nome simples ou nome com versão.
+    # ATENÇÃO à fixação de versões: o pacman só instala uma versão que exista
+    # no repositório configurado — não há um arquivo de todas as versões como
+    # no apt. Fixar `kubectl=1.31.4-1` só funciona enquanto essa versão for a
+    # do repositório; para reprodutibilidade a sério, usa um snapshot de
+    # repositório (ver docs/pt-AO/cli.md).
+    desktop:
+      - jq
+      # - kubectl=1.31.4-1
+    root: []
+    aur: []               # compilados durante o build (mais lento)
+
+    # Pacotes do perfil base a NÃO instalar.
+    remove: []
+
+  binaries:
+    # Binários que não vivem em repositório nenhum. São descarregados durante o
+    # build e colocados na imagem.
+    # - name: delonix
+    #   url: https://github.com/angolardevops/delonix-runtime/releases/latest/download/delonix-x86_64-unknown-linux-gnu
+    #   dest: /usr/local/bin/delonix
+    #   mode: "0755"
+    #   sha256: ""        # opcional, mas recomendado
+
+  overlays:
+    # Ficheiros teus copiados para dentro da imagem. Caminhos relativos a este
+    # ficheiro. `overlays/etc/...` acaba em `/etc/...`.
+    - src: overlays
+      dest: /
+
+  services:
+    enable: []            # nomes de unidades systemd
+    disable: []
+
+  users:
+    live:
+      name: {name}
+      password: {name}
+      groups: [wheel, video, audio, network, kvm, libvirt]
+"""
+
+
+def cmd_init(args):
+    project = Path(args.path or ".").resolve()
+    name = args.name or (project.name if args.path else "minha-distro")
+    distro = args.distro or detect_host()
+    project.mkdir(parents=True, exist_ok=True)
+
+    inventory = project / "delonixos.yaml"
+    if inventory.exists() and not args.force:
+        die(f"{inventory} já existe (usa --force para substituir)")
+
+    inventory.write_text(INVENTORY_TEMPLATE.format(
+        name=name, distro=distro, base=("scratch" if args.scratch else BASE_PROFILE),
+        file=inventory.name,
+    ))
+
+    for sub in ("overlays/etc", "overlays/usr/local/bin", "binaries"):
+        (project / sub).mkdir(parents=True, exist_ok=True)
+    (project / "overlays/etc/.gitkeep").touch()
+    (project / "binaries/README.md").write_text(
+        "# binaries\n\nBinários locais a incluir na imagem.\n"
+        "Referencia-os no `delonixos.yaml` com `path:` em vez de `url:`.\n")
+
+    print()
+    ok(f"projecto criado em {project}")
+    print(f"""
+  {BLD}Próximos passos{RST}
+
+    1. edita   {inventory.relative_to(Path.cwd()) if project.is_relative_to(Path.cwd()) else inventory}
+    2. valida  delonixos validate -f delonixos.yaml
+    3. constrói delonixos build   -f delonixos.yaml
+
+  O host detectado foi {BLD}{distro}{RST} — corre `delonixos doctor` para ver se
+  tem tudo o que é preciso.
+""")
+
+
+# ---------------------------------------------------------------------- doctor
+def have(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
+def cmd_doctor(args):
+    host = args.distro or detect_host()
+    spec = host_spec(host)
+    fails = 0
+
+    print(f"\n{BLD}Host{RST}")
+    if spec["family"] == "unknown":
+        warn(f"distro '{host}' não reconhecida — o build por contentor deve funcionar na mesma")
+    else:
+        ok(f"{host} (família {spec['family']})")
+
+    print(f"\n{BLD}Motor de contentores{RST}")
+    engine = None
+    for candidate in ("podman", "docker"):
+        if have(candidate):
+            engine = candidate
+            ok(f"{candidate} presente")
+            break
+    if not engine:
+        if spec["native"]:
+            warn("sem podman/docker — mas nesta distro o build pode correr nativamente")
+        else:
+            bad("sem podman nem docker")
+            print(f"      {spec['install'].format(pkgs=spec['pkgs'])}")
+            fails += 1
+
+    if spec["native"]:
+        print(f"\n{BLD}Build nativo{RST}")
+        if have("buildiso"):
+            ok("manjaro-tools instalado (dá para construir sem contentor)")
+        else:
+            warn("sem manjaro-tools; instala com:")
+            print(f"      {spec['install'].format(pkgs=spec['pkgs'])}")
+
+    print(f"\n{BLD}Privilégios{RST}")
+    if os.geteuid() == 0:
+        ok("a correr como root")
+    elif have("sudo"):
+        ok("sudo disponível (o buildiso precisa de root a sério)")
+    else:
+        bad("sem sudo e sem root — o buildiso não consegue montar loop devices")
+        fails += 1
+
+    print(f"\n{BLD}Recursos{RST}")
+    try:
+        st = os.statvfs(".")
+        free_gb = st.f_bavail * st.f_frsize / 1024**3
+        (ok if free_gb >= 35 else warn)(f"{free_gb:.0f} GB livres (recomendado: 35 GB)")
+    except OSError:
+        pass
+    try:
+        mem_gb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024**3
+        (ok if mem_gb >= 8 else warn)(f"{mem_gb:.0f} GB de RAM (recomendado: 8 GB)")
+    except (ValueError, OSError):
+        pass
+    ok(f"{os.cpu_count()} CPUs")
+
+    print(f"\n{BLD}Python{RST}")
+    ok(f"python {sys.version_info.major}.{sys.version_info.minor}")
+    try:
+        import yaml  # noqa: F401
+        ok("PyYAML presente")
+    except ImportError:
+        warn("sem PyYAML — o leitor interno cobre o inventário, mas é limitado")
+    try:
+        import PIL  # noqa: F401
+        ok("Pillow presente (geração da marca)")
+    except ImportError:
+        warn("sem Pillow — a marca é gerada dentro do contentor, não faz falta aqui")
+
+    print()
+    if fails:
+        die(f"{fails} pré-requisito(s) em falta")
+    ok("pronto para construir")
+
+
+# -------------------------------------------------------------------- validate
+REQUIRED = {"apiVersion", "kind", "metadata", "spec"}
+
+
+def load_inventory(path: Path) -> dict:
+    if not path.exists():
+        die(f"inventário não encontrado: {path}")
+    data = load_yaml(path)
+    if not isinstance(data, dict):
+        die(f"{path}: o inventário tem de ser um mapa YAML")
+    return data
+
+
+def validate_inventory(data: dict, path: Path) -> list[str]:
+    problems = []
+    missing = REQUIRED - set(data)
+    if missing:
+        problems.append(f"faltam campos de topo: {', '.join(sorted(missing))}")
+    if data.get("apiVersion") != "delonixos/v1":
+        problems.append(f"apiVersion desconhecida: {data.get('apiVersion')!r} (esperado delonixos/v1)")
+    if data.get("kind") != "Distro":
+        problems.append(f"kind desconhecido: {data.get('kind')!r} (esperado Distro)")
+
+    meta = data.get("metadata") or {}
+    if not meta.get("name"):
+        problems.append("metadata.name em falta")
+    elif not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", str(meta["name"])):
+        problems.append(f"metadata.name inválido: {meta['name']!r} (minúsculas, sem espaços)")
+
+    spec = data.get("spec") or {}
+    ext = spec.get("extends", BASE_PROFILE)
+    if ext not in (BASE_PROFILE, "scratch"):
+        problems.append(f"spec.extends desconhecido: {ext!r} (usa {BASE_PROFILE} ou scratch)")
+
+    pkgs = spec.get("packages") or {}
+    for group in ("desktop", "root", "aur", "remove"):
+        val = pkgs.get(group)
+        if val is None:
+            continue
+        if not isinstance(val, list):
+            problems.append(f"spec.packages.{group} tem de ser uma lista")
+            continue
+        for item in val:
+            if not isinstance(item, str):
+                problems.append(f"spec.packages.{group}: entrada inválida {item!r}")
+            elif not re.fullmatch(r"[a-z0-9][a-z0-9@._+-]*(=[\w.:+-]+)?", item):
+                problems.append(f"spec.packages.{group}: nome inválido {item!r}")
+
+    for i, b in enumerate(spec.get("binaries") or []):
+        if not isinstance(b, dict):
+            problems.append(f"spec.binaries[{i}] tem de ser um mapa")
+            continue
+        if not b.get("dest"):
+            problems.append(f"spec.binaries[{i}]: falta `dest`")
+        if not b.get("url") and not b.get("path"):
+            problems.append(f"spec.binaries[{i}]: precisa de `url` ou `path`")
+        if b.get("path") and not (path.parent / str(b["path"])).exists():
+            problems.append(f"spec.binaries[{i}]: {b['path']} não existe")
+
+    for i, o in enumerate(spec.get("overlays") or []):
+        if not isinstance(o, dict) or not o.get("src"):
+            problems.append(f"spec.overlays[{i}]: falta `src`")
+        elif not (path.parent / str(o["src"])).exists():
+            problems.append(f"spec.overlays[{i}]: {o['src']} não existe")
+
+    return problems
+
+
+def cmd_validate(args):
+    path = Path(args.file).resolve()
+    data = load_inventory(path)
+    print(f"\n{BLD}{path.name}{RST}")
+    problems = validate_inventory(data, path)
+    for p in problems:
+        bad(p)
+    if problems:
+        die(f"{len(problems)} problema(s) no inventário")
+    meta, spec = data["metadata"], data["spec"]
+    pkgs = spec.get("packages") or {}
+    ok(f"{meta.get('name')} {meta.get('version', '')} — base: {spec.get('extends', BASE_PROFILE)}")
+    ok(f"pacotes: +{len(pkgs.get('desktop') or [])} desktop, "
+       f"+{len(pkgs.get('root') or [])} root, +{len(pkgs.get('aur') or [])} AUR, "
+       f"−{len(pkgs.get('remove') or [])} removidos")
+    ok(f"binários: {len(spec.get('binaries') or [])} · overlays: {len(spec.get('overlays') or [])}")
+    print()
+    ok("inventário válido")
+
+
+# ----------------------------------------------------------------------- fontes
+def find_repo() -> Path | None:
+    """Onde está o repositório com o perfil base."""
+    env = os.environ.get("DELONIXOS_HOME")
+    if env and (Path(env) / "iso-profiles").is_dir():
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here.parent.parent] + list(here.parents):
+        if (parent / "iso-profiles" / "delonix").is_dir():
+            return parent
+    for candidate in (Path.home() / ".local/share/delonixos/delonix-os",
+                      Path("/usr/share/delonixos/delonix-os")):
+        if (candidate / "iso-profiles").is_dir():
+            return candidate
+    return None
+
+
+def ensure_repo(auto_clone=True) -> Path:
+    repo = find_repo()
+    if repo:
+        return repo
+    if not auto_clone:
+        die("repositório base não encontrado (define DELONIXOS_HOME)")
+    dest = Path.home() / ".local/share/delonixos/delonix-os"
+    info(f"a obter o perfil base para {dest}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not have("git"):
+        die("preciso do git para obter o perfil base")
+    subprocess.run(["git", "clone", "--depth", "1", REPO_URL, str(dest)], check=True)
+    return dest
+
+
+# ----------------------------------------------------------------------- render
+def render_profile(data: dict, inventory_path: Path, out_dir: Path, repo: Path) -> Path:
+    """Traduz o inventário num perfil do manjaro-tools em `out_dir`."""
+    meta, spec = data["metadata"], data["spec"]
+    name = str(meta["name"])
+    pkgs = spec.get("packages") or {}
+    base = spec.get("extends", BASE_PROFILE)
+
+    edition, profile = (base.split("/") + ["devops"])[:2] if base != "scratch" else (name, "custom")
+    dest = out_dir / edition / profile
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if base == "scratch":
+        dest.mkdir(parents=True)
+        for f in ("Packages-Root", "Packages-Desktop", "Packages-Live", "Packages-Mhwd"):
+            (dest / f).write_text(f"# {name} — gerado pelo delonixos\nbase\nKERNEL\n"
+                                  if f == "Packages-Root" else f"# {name}\n")
+        (dest / "profile.conf").write_text('displaymanager="none"\n')
+        for d in ("root-overlay", "live-overlay", "desktop-overlay"):
+            (dest / d).mkdir()
+    else:
+        src = repo / "iso-profiles" / edition / profile
+        if not src.is_dir():
+            die(f"perfil base não encontrado: {src}")
+        # `symlinks=True` não é detalhe: o /etc/skel tem links para unidades
+        # systemd (podman.socket, psd.service) que só existem na máquina
+        # instalada. Sem isto, o copytree tenta segui-los e rebenta no host.
+        shutil.copytree(src, dest, symlinks=True)
+
+    # --- pacotes acrescentados -------------------------------------------------
+    for group, filename in (("desktop", "Packages-Desktop"), ("root", "Packages-Root")):
+        extra = pkgs.get(group) or []
+        if not extra:
+            continue
+        target = dest / filename
+        with target.open("a") as fh:
+            fh.write(f"\n##### acrescentado por {inventory_path.name} #####\n")
+            for p in extra:
+                fh.write(f"{p}\n")
+
+    aur = pkgs.get("aur") or []
+    if aur:
+        with (dest / "Packages-Desktop").open("a") as fh:
+            fh.write(f"\n##### AUR, acrescentado por {inventory_path.name} #####\n")
+            for p in aur:
+                fh.write(f"{p}   # [aur]\n")
+        aur_list = out_dir / "aur.list"
+        base_aur = (repo / "packages/aur.list").read_text() if base != "scratch" else ""
+        aur_list.write_text(base_aur + "\n" + "\n".join(str(a) for a in aur) + "\n")
+
+    # --- pacotes removidos -----------------------------------------------------
+    remove = {str(r) for r in (pkgs.get("remove") or [])}
+    if remove:
+        for filename in ("Packages-Desktop", "Packages-Root", "Packages-Live", "Packages-Mhwd"):
+            target = dest / filename
+            if not target.exists():
+                continue
+            lines = []
+            for line in target.read_text().splitlines():
+                token = line.split("#")[0].strip().split()
+                if token and token[-1] in remove:
+                    lines.append(f"# removido por {inventory_path.name}: {line}")
+                else:
+                    lines.append(line)
+            target.write_text("\n".join(lines) + "\n")
+
+    # --- overlays do utilizador ------------------------------------------------
+    for o in spec.get("overlays") or []:
+        src = (inventory_path.parent / str(o["src"])).resolve()
+        rel = str(o.get("dest", "/")).lstrip("/")
+        target = dest / "desktop-overlay" / rel
+        target.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, target, symlinks=True, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, target)
+
+    # --- binários --------------------------------------------------------------
+    binaries = spec.get("binaries") or []
+    if binaries:
+        (out_dir / "binaries.json").write_text(json.dumps(binaries, indent=2))
+        for b in binaries:
+            if b.get("path"):
+                src = (inventory_path.parent / str(b["path"])).resolve()
+                target = dest / "desktop-overlay" / str(b["dest"]).lstrip("/")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, target)
+                os.chmod(target, int(str(b.get("mode", "0755")), 8))
+
+    # --- serviços e identidade -------------------------------------------------
+    conf = dest / "profile.conf"
+    text = conf.read_text() if conf.exists() else ""
+    services = spec.get("services") or {}
+    extra_conf = [f"\n##### acrescentado por {inventory_path.name} #####"]
+    users = (spec.get("users") or {}).get("live") or {}
+    if users.get("name"):
+        text = re.sub(r'^username=.*$', f'username="{users["name"]}"', text, flags=re.M)
+    if users.get("password"):
+        text = re.sub(r'^password=.*$', f'password="{users["password"]}"', text, flags=re.M)
+    if services.get("enable"):
+        extra_conf.append(f"enable_systemd+=({' '.join(repr(s) for s in services['enable'])})"
+                          .replace("'", "'"))
+    if services.get("disable"):
+        extra_conf.append(f"disable_systemd+=({' '.join(repr(s) for s in services['disable'])})")
+    conf.write_text(text + "\n".join(extra_conf) + "\n")
+
+    (out_dir / "metadata.json").write_text(json.dumps({
+        "name": name,
+        "version": meta.get("version", "1.0.0"),
+        "codename": meta.get("codename", ""),
+        "kernel": (spec.get("base") or {}).get("kernel", "linux612"),
+        "branch": (spec.get("base") or {}).get("branch", "stable"),
+        "edition": edition, "profile": profile,
+    }, indent=2))
+    return dest
+
+
+def cmd_render(args):
+    path = Path(args.file).resolve()
+    data = load_inventory(path)
+    problems = validate_inventory(data, path)
+    if problems:
+        for p in problems:
+            bad(p)
+        die("corrige o inventário antes de renderizar")
+    repo = ensure_repo()
+    out = Path(args.out or (path.parent / "build/profile")).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    dest = render_profile(data, path, out, repo)
+    ok(f"perfil gerado em {dest}")
+    print(f"  {DIM}(é isto que o buildiso consome){RST}")
+
+
+# ------------------------------------------------------------------------ build
+def cmd_build(args):
+    host = args.from_distro or detect_host()
+    spec_host = host_spec(host)
+    repo = ensure_repo()
+
+    inventory = Path(args.file).resolve() if args.file else None
+    if inventory:
+        data = load_inventory(inventory)
+        problems = validate_inventory(data, inventory)
+        if problems:
+            for p in problems:
+                bad(p)
+            die("corrige o inventário antes de construir")
+        out = Path(args.out or (inventory.parent / "build/profile")).resolve()
+        out.mkdir(parents=True, exist_ok=True)
+        info("a traduzir o inventário para um perfil manjaro-tools")
+        render_profile(data, inventory, out, repo)
+        env_extra = {"DELONIX_PROFILE_OVERRIDE": str(out)}
+        info(f"perfil gerado em {out}")
+    else:
+        env_extra = {}
+        info(f"a construir o perfil oficial ({BASE_PROFILE})")
+
+    build_sh = repo / "scripts/build.sh"
+    if not build_sh.exists():
+        die(f"não encontrei {build_sh}")
+
+    cmd = [str(build_sh)]
+    if args.kernel:
+        cmd += ["--kernel", args.kernel]
+    if args.engine:
+        cmd += ["--engine", args.engine]
+
+    print()
+    info(f"host: {host} ({spec_host['family']}) — "
+         f"{'build nativo possível' if spec_host['native'] else 'build em contentor'}")
+    if args.dry_run:
+        warn("--dry-run: não vou construir")
+        print(f"  {' '.join(cmd)}")
+        return
+
+    env = {**os.environ, **env_extra, "DELONIX_REPO_DIR": str(repo)}
+    sys.exit(subprocess.run(cmd, cwd=repo, env=env).returncode)
+
+
+# ------------------------------------------------------------------------- main
+def main():
+    parser = argparse.ArgumentParser(
+        prog="delonixos",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=textwrap.dedent(__doc__ or ""),
+    )
+    parser.add_argument("--version", action="version", version=f"delonixos {VERSION}")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("doctor", help="verifica se esta máquina consegue construir")
+    p.add_argument("--distro", help="forçar a distro do host (senão é detectada)")
+    p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("init", help="cria um projecto com inventário YAML")
+    p.add_argument("path", nargs="?", help="directoria do projecto (por omissão, a actual)")
+    p.add_argument("--distro", help="distro onde vais construir (ubuntu, fedora, arch…)")
+    p.add_argument("--name", help="nome da tua distro")
+    p.add_argument("--scratch", action="store_true", help="partir do mínimo em vez do perfil oficial")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser("validate", help="valida o inventário")
+    p.add_argument("-f", "--file", default="delonixos.yaml")
+    p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("render", help="traduz o inventário num perfil manjaro-tools")
+    p.add_argument("-f", "--file", default="delonixos.yaml")
+    p.add_argument("-o", "--out")
+    p.set_defaults(func=cmd_render)
+
+    p = sub.add_parser("build", help="constrói a ISO")
+    p.add_argument("--from", dest="from_distro", metavar="DISTRO",
+                   help="ubuntu|debian|fedora|arch|manjaro|opensuse (por omissão, detectada)")
+    p.add_argument("-f", "--file", help="inventário YAML (sem isto, constrói o perfil oficial)")
+    p.add_argument("--kernel")
+    p.add_argument("--engine", choices=["podman", "docker"])
+    p.add_argument("-o", "--out")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_build)
+
+    args = parser.parse_args()
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        die("interrompido", 130)
+    except subprocess.CalledProcessError as e:
+        die(f"comando falhou: {e}", e.returncode or 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -34,6 +34,34 @@ DevOps, an SRE and a Platform Engineer each get out of the box.
 
 ---
 
+## Build it from your own distro
+
+You do not need Manjaro to build DelonixOS — or to build **your own** distro
+from it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/angolardevops/delonix-os/main/install.sh | sh
+
+delonixos doctor                     # can this machine build? exact commands for your package manager
+delonixos build --from ubuntu        # ubuntu · debian · fedora · opensuse · arch · manjaro
+```
+
+Or describe your own image in an inventory and build that instead:
+
+```bash
+delonixos init my-distro --distro ubuntu
+cd my-distro && $EDITOR delonixos.yaml   # add packages, pin versions, drop what you do not want,
+                                         # add your own binaries and overlay files
+delonixos build -f delonixos.yaml
+```
+
+The inventory extends the official profile (or starts from `scratch`), and the
+tool renders it into a manjaro-tools profile before building — that rendered
+profile stays on disk, readable and diffable, because when a build goes wrong
+that is where you look. Full reference: **[CLI documentation](docs/en/cli.md)**.
+
+---
+
 ## Why another distro
 
 Every engineer who operates infrastructure repeats the same setup on a fresh
@@ -193,6 +221,7 @@ delonix-os/
 | English | Português de Angola |
 |---|---|
 | [Tools by profile](docs/en/tools-by-profile.md) | [Ferramentas por perfil](docs/pt-AO/ferramentas-por-perfil.md) |
+| [`delonixos` CLI](docs/en/cli.md) | [CLI `delonixos`](docs/pt-AO/cli.md) |
 | [Design decisions](docs/en/decisions.md) | [Decisões de desenho](docs/pt-AO/decisoes.md) |
 | [Validating a build](docs/en/validation.md) | [Validar um build](docs/pt-AO/validacao.md) |
 | [Roadmap](docs/en/roadmap.md) | [Roteiro](docs/pt-AO/roteiro.md) |

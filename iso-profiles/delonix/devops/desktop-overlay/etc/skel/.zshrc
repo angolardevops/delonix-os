@@ -56,6 +56,9 @@ export SCCACHE_CACHE_SIZE="10G"
 # Python: uv gere ambientes e versões; nada de pip global a partir root.
 export UV_PYTHON_PREFERENCE=managed
 export PIP_REQUIRE_VIRTUALENV=true
+# Node: o nvm manda. Carregado à primeira utilização — carregá-lo em cada shell
+# custa ~200 ms, e a maioria das shells nunca toca em Node.
+export NVM_DIR="$HOME/.nvm"
 # Delonix Runtime: os defaults já servem — DELONIX_ROOT aponta sozinho para
 # ~/.local/share/delonix. Só se define aqui o que muda comportamento:
 #   DELONIX_SCAN_ON_PULL=1   analisa imagens com o trivy ao descarregar
@@ -177,6 +180,31 @@ for _tool in kubectl helm k9s tofu argocd cosign trivy delonixctl delonix; do
 done
 fpath=("$_delonix_cache" $fpath)
 unset _tool _file
+
+## --- nvm preguiçoso -----------------------------------------------------------
+# Substitui `nvm`, `node`, `npm` e `npx` por stubs que carregam o nvm de
+# verdade na primeira chamada e depois se apagam. Sem isto, ou o arranque da
+# shell fica lento, ou o `.nvmrc` do projecto não é respeitado.
+if [[ -s /usr/share/nvm/init-nvm.sh ]]; then
+    _delonix_load_nvm() {
+        unfunction nvm node npm npx 2>/dev/null
+        source /usr/share/nvm/init-nvm.sh
+    }
+    for _cmd in nvm node npm npx; do
+        # Depois do unfunction, o nome volta a resolver para o que o nvm
+        # definiu: função (nvm) ou binário (node/npm/npx). `command` não serve
+        # aqui — o próprio `nvm` é uma função de shell.
+        eval "${_cmd}() { _delonix_load_nvm; ${_cmd} \"\$@\"; }"
+    done
+    unset _cmd
+    # Respeita o .nvmrc ao entrar numa directoria de projecto.
+    _delonix_nvmrc() {
+        [[ -f .nvmrc ]] || return
+        _delonix_load_nvm 2>/dev/null
+        nvm use --silent 2>/dev/null
+    }
+    autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook chpwd _delonix_nvmrc
+fi
 
 ## --- tmux como consola por omissão --------------------------------------------
 # Toda a sessão interactiva vive dentro do tmux: um cabo que cai, um SSH que

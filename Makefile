@@ -8,6 +8,7 @@
 #   make shell      abre uma shell no contentor de build
 #   make test       arranca a última ISO em QEMU (UEFI)
 #   make qemu-cmd   imprime o comando QEMU da última ISO (para copiares)
+#   make cli-test   testa o CLI delonixos (doctor, init, validate, render)
 #   make clean      apaga out/ e .cache/
 
 SHELL      := /usr/bin/env bash
@@ -18,12 +19,12 @@ KERNEL     ?= linux612
 # `**` só funciona com globstar ligado.
 ISO         = $(shell find $(OUT_DIR) -name '*.iso' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 
-.PHONY: all branding packages verify check iso shell test qemu-cmd clean help
+.PHONY: all branding packages verify check iso shell test qemu-cmd cli-test clean help
 
 all: verify
 
 help:
-	@sed -n '3,11p' $(MAKEFILE_LIST) | sed 's/^# \?//'
+	@sed -n '3,12p' $(MAKEFILE_LIST) | sed 's/^# \?//'
 
 branding:
 	@./scripts/stage-branding.sh
@@ -49,6 +50,9 @@ test:
 
 qemu-cmd:
 	@./scripts/qemu-cmd.sh
+
+cli-test:
+	@./scripts/test-cli.sh
 
 clean:
 	@rm -rf $(OUT_DIR) .cache build

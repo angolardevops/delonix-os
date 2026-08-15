@@ -34,6 +34,34 @@ marca Delonix ──► GRUB, Plymouth animado, SDDM, KSplash, tema, wallpapers
 
 ---
 
+## Construir a partir da tua distro
+
+Não precisas de Manjaro para construir o DelonixOS — nem para construir a **tua
+própria** distro a partir dele:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/angolardevops/delonix-os/main/install.sh | sh
+
+delonixos doctor                     # esta máquina consegue? comandos exactos do teu gestor de pacotes
+delonixos build --from ubuntu        # ubuntu · debian · fedora · opensuse · arch · manjaro
+```
+
+Ou descreve a tua imagem num inventário e constrói essa:
+
+```bash
+delonixos init a-minha-distro --distro ubuntu
+cd a-minha-distro && $EDITOR delonixos.yaml   # acrescenta pacotes, fixa versões, tira o que não queres,
+                                              # junta binários teus e ficheiros de overlay
+delonixos build -f delonixos.yaml
+```
+
+O inventário estende o perfil oficial (ou parte do `scratch`), e a ferramenta
+traduz isso num perfil manjaro-tools antes de construir — esse perfil traduzido
+fica em disco, legível e comparável com `diff`, porque quando um build corre mal
+é aí que se olha. Referência completa: **[documentação do CLI](docs/pt-AO/cli.md)**.
+
+---
+
 ## Porquê mais uma distro
 
 Toda a gente que opera infraestrutura repete a mesma preparação numa máquina
@@ -198,6 +226,7 @@ delonix-os/
 | Português de Angola | English |
 |---|---|
 | [Ferramentas por perfil](docs/pt-AO/ferramentas-por-perfil.md) | [Tools by profile](docs/en/tools-by-profile.md) |
+| [CLI `delonixos`](docs/pt-AO/cli.md) | [`delonixos` CLI](docs/en/cli.md) |
 | [Decisões de desenho](docs/pt-AO/decisoes.md) | [Design decisions](docs/en/decisions.md) |
 | [Validar um build](docs/pt-AO/validacao.md) | [Validating a build](docs/en/validation.md) |
 | [Roteiro](docs/pt-AO/roteiro.md) | [Roadmap](docs/en/roadmap.md) |

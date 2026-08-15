@@ -58,7 +58,7 @@ person otherwise rediscovers alone:
 | **Rust** | `rust` `rust-analyzer` `mold` `sccache` `cargo-watch` `cargo-edit` | `~/.cargo/config.toml` already uses the **mold** linker and **sccache**. On a large project, linking stops taking longer than compiling. Sparse registry index enabled. |
 | **Go** | `go` `gopls` `delve` `go-tools` | `GOPATH`/`GOBIN` on `PATH`, `GOTOOLCHAIN=auto` so a project that pins another Go version just fetches it. |
 | **Python** | `python` `uv` `ruff` `pipx` `poetry` | `uv` manages interpreters and environments; `PIP_REQUIRE_VIRTUALENV` blocks accidental global installs. |
-| **Node** | `nodejs` `npm` `pnpm` | Also the runtime behind Claude Code. |
+| **Node** | `nvm` `nodejs` `npm` `pnpm` | `nvm` is what you use day to day — lazily loaded and honouring `.nvmrc` when you enter a project. The system `nodejs` is the floor, so a machine with no network still has a Node on first boot. |
 
 The `rust` package ships instead of `rustup` on purpose: it works **offline**, on
 first boot. Multiple toolchains are one command away —
