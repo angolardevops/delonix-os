@@ -73,6 +73,29 @@ fica em disco, legível e comparável com `diff`, porque quando um build corre m
 
 ---
 
+## Como fica
+
+> Estas são **montagens a partir dos assets reais**, não capturas de ecrã — a
+> primeira ISO ainda não foi construída. O GRUB e o Plymouth são fiéis (as
+> posições vêm dos próprios ficheiros de tema); o SDDM e o desktop usam os
+> valores do `Main.qml` e do layout do painel, mas quem desenha no fim é o Qt e
+> o Plasma. Regeneras com `make preview`.
+
+| Menu de arranque | Splash de arranque (animado) |
+|---|---|
+| ![GRUB](docs/img/delonixos-1-grub.png) | ![Plymouth](docs/img/delonixos-2-plymouth.png) |
+
+| Login (SDDM) | Desktop |
+|---|---|
+| ![SDDM](docs/img/delonixos-3-sddm.png) | ![Desktop](docs/img/delonixos-4-desktop.png) |
+
+Fazer isto pagou-se logo: ao desenhar o tema do GRUB a 720p — a resolução com
+que uma VM arranca — vi o menu por cima do subtítulo. As posições misturavam
+percentagens com píxeis fixos, o que só alinha na resolução em que foi medido.
+Agora é tudo percentagem.
+
+---
+
 ## Porquê mais uma distro
 
 Toda a gente que opera infraestrutura repete a mesma preparação numa máquina

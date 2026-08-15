@@ -10,16 +10,21 @@ terminal-top: "20%"
 terminal-width: "80%"
 terminal-height: "60%"
 
+# NOTA: tudo em percentagem, nada em píxeis somados a percentagens.
+# A primeira versão punha o título em `18%+112` e o menu em `40%`: a 1080p
+# sobrava espaço, mas a 720p — que é o que aparece numa VM ou num portátil
+# antigo — o menu subia por cima do subtítulo. Percentagens escalam; somas de
+# píxeis a percentagens só funcionam na resolução em que foram medidas.
 + image {
     left = 50%-48
-    top = 18%
+    top = 10%
     width = 96
     height = 96
     file = "logo.png"
 }
 
 + label {
-    top = 18%+112
+    top = 26%
     left = 0
     width = 100%
     align = "center"
@@ -29,7 +34,7 @@ terminal-height: "60%"
 }
 
 + label {
-    top = 18%+142
+    top = 31%
     left = 0
     width = 100%
     align = "center"

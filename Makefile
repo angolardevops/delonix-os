@@ -1,6 +1,7 @@
 # DelonixOS — atalhos de construção.
 #
 #   make branding   regenera os PNG da marca
+#   make preview    monta as pré-visualizações dos ecrãs (docs/img)
 #   make verify     valida o perfil (local)
 #   make check      valida o perfil + confirma pacotes nos repos (rede)
 #   make packages   compila os pacotes da casa (só em Arch/Manjaro)
@@ -20,15 +21,19 @@ KERNEL     ?= linux612
 # `**` só funciona com globstar ligado.
 ISO         = $(shell find $(OUT_DIR) -name '*.iso' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 
-.PHONY: all branding packages verify check iso shell test qemu-cmd cli-test distro-test clean help
+.PHONY: all branding preview packages verify check iso shell test qemu-cmd cli-test distro-test clean help
 
 all: verify
 
 help:
-	@sed -n '3,13p' $(MAKEFILE_LIST) | sed 's/^# \?//'
+	@sed -n '3,14p' $(MAKEFILE_LIST) | sed 's/^# \?//'
 
 branding:
 	@./scripts/stage-branding.sh
+
+preview: branding
+	@python3 branding/preview.py
+	@cp build/preview/*.png docs/img/ 2>/dev/null || true
 
 packages: branding
 	@./scripts/build-os-packages.sh $(REPO_DIR)/build/repo

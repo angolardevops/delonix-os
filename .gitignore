@@ -1,3 +1,7 @@
+# NOTA: docs/img/*.png É versionado de propósito — são as pré-visualizações que
+# aparecem no README, e ninguém clona um repositório para correr um script antes
+# de decidir se o projecto lhe interessa. São regeneráveis com `make preview`.
+
 # saída de build
 /out/
 /.cache/
