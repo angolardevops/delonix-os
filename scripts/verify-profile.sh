@@ -111,6 +111,39 @@ while IFS= read -r -d '' pkgbuild; do
 done < <(find "$REPO_DIR/packaging" -name PKGBUILD -print0)
 (( dep_viol == 0 )) && ok "nenhum pacote da casa reintroduz o que foi removido"
 
+# O `bash -n` NÃO apanha crases dentro de aspas duplas: a substituição de comando
+# só é analisada quando corre, por isso o script passa na verificação de sintaxe
+# e depois cospe um erro do bash em cima de quem o usa. Foi assim que duas
+# mensagens do delonix-doctor iam partir — uma delas só numa sessão Wayland sem
+# wl-clipboard, ou seja, no ramo que ninguém testa.
+echo "== crases dentro de aspas (o bash -n não as vê) =="
+crases=0
+while IFS= read -r -d '' f; do
+    if grep -nE '"[^"]*`[^"]*`[^"]*"' "$f" >/dev/null 2>&1; then
+        while IFS= read -r linha; do
+            bad "${f#$REPO_DIR/}:$linha"
+            ((crases++))
+        done < <(grep -nE '"[^"]*`[^"]*`[^"]*"' "$f" | cut -d: -f1)
+    fi
+done < <(find "$REPO_DIR/packaging" "$REPO_DIR/scripts" -type f \
+            \( -name 'delonix-*' -o -name '*.sh' -o -name 'firstboot' \) -print0 2>/dev/null)
+(( crases == 0 )) && ok "nenhuma crase acidental em texto"
+
+# O shellcheck vê o que o bash -n não vê. Está na ISO; aqui é opcional para não
+# obrigar quem constrói a tê-lo instalado.
+if command -v shellcheck >/dev/null; then
+    sc=0
+    while IFS= read -r -d '' f; do
+        shellcheck -S error -f gcc "$f" 2>/dev/null | while read -r l; do
+            bad "shellcheck: $l"
+        done
+        shellcheck -S error "$f" >/dev/null 2>&1 || ((sc++))
+    done < <(find "$REPO_DIR/packaging" -name 'delonix-*' -type f -print0 2>/dev/null)
+    (( sc == 0 )) && ok "shellcheck sem erros nas ferramentas" || ((fails+=sc))
+else
+    warn "shellcheck não instalado — 'make lint' corre-o num contentor"
+fi
+
 echo "== sintaxe dos scripts =="
 while IFS= read -r -d '' s; do
     if bash -n "$s" 2>/dev/null; then ok "${s#$REPO_DIR/}"; else bad "sintaxe: ${s#$REPO_DIR/}"; fi

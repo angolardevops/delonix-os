@@ -13,6 +13,9 @@ section() { printf '\n%s── %s ───────────────�
 ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$1"; }
 bad()  { printf '  %s✗%s %s\n' "$RED" "$RST" "$1"; ((fails++)); }
 warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$1"; ((warns++)); }
+# Nem êxito nem aviso: um facto que não é responsabilidade de ninguém (não ser
+# uma sessão KDE, por exemplo). Não conta para o resultado final.
+info() { printf '  %s·%s %s\n' "$DIM" "$RST" "$1"; }
 
 check_sysctl() {
     local key=$1 min=$2 actual
@@ -119,7 +122,7 @@ else warn "outside tmux (DELONIX_NO_TMUX set, or a non-interactive terminal)"; f
 
 section "Acceleration (GPU / NPU / video)"
 if command -v clinfo >/dev/null; then
-    platforms=$(clinfo -l 2>/dev/null | grep -c 'Platform #' || echo 0)
+    platforms=$(clinfo -l 2>/dev/null | grep -c 'Platform #') || platforms=0
     (( platforms > 0 )) && ok "OpenCL: $platforms platform(s)" ||
         warn "OpenCL reports no platforms (GPU without a compute driver?)"
 fi
@@ -152,20 +155,38 @@ systemctl is-active --quiet systemd-oomd && ok "systemd-oomd watching pressure (
 acct=$(systemctl show -p DefaultMemoryAccounting --value 2>/dev/null)
 [[ $acct == yes ]] && ok "memory accounting on (without it the limits mean nothing)" ||
     bad "memory accounting off — CPUWeight/MemoryHigh have no effect"
+# `systemctl show -p ... --value` devolve a STRING "[not set]" quando a
+# propriedade não está definida, não um número nem vazio. Comparar isso com
+# `-gt` dá um erro de sintaxe do bash em cima da cara de quem corre o comando.
 weight=$(systemctl show user.slice -p CPUWeight --value 2>/dev/null)
-[[ ${weight:-100} -gt 100 ]] && ok "user.slice prioritised over the system (CPUWeight=$weight)" ||
-    warn "user.slice not prioritised (CPUWeight=${weight:-?})"
+[[ $weight =~ ^[0-9]+$ ]] || weight=""
+if [[ -n $weight ]] && (( weight > 100 )); then
+    ok "user.slice prioritised over the system (CPUWeight=$weight)"
+else
+    warn "user.slice not prioritised (CPUWeight=${weight:-not set})"
+fi
 
 section "Desktop"
 if [[ ${XDG_SESSION_TYPE:-} == wayland ]]; then
     command -v wl-copy >/dev/null && ok "clipboard (wl-clipboard)" ||
-        bad "no wl-clipboard — `| wl-copy` will not work in this Wayland session"
+        bad 'no wl-clipboard — "| wl-copy" will not work in this Wayland session'
 else
     command -v xclip >/dev/null && ok "clipboard (xclip)" || warn "no xclip"
 fi
-anim=$(kreadconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 2>/dev/null)
-[[ $anim == 0 ]] && ok "animations off (eyecandy on to restore)" ||
-    warn "animations at ${anim:-?} — costs GPU and latency"
+# Sem o kreadconfig6 (fora do KDE) não há resposta nenhuma a dar — melhor
+# dizê-lo do que mostrar um "?" que parece um valor.
+if ! command -v kreadconfig6 >/dev/null; then
+    anim=n/d
+else
+    anim=$(kreadconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 2>/dev/null)
+fi
+if [[ $anim == 0 ]]; then
+    ok "animations off (eyecandy on to restore)"
+elif [[ $anim == n/d ]]; then
+    info "animations: not a KDE session, nothing to read"
+else
+    warn "animations at ${anim:-default} — costs GPU and latency"
+fi
 
 section "Labs"
 if command -v podman >/dev/null; then
@@ -190,7 +211,7 @@ case $root_fs in
     btrfs)
         ok "root on btrfs"
         findmnt -no OPTIONS / | grep -q compress && ok "compression active" ||
-            warn "no compression — `compress=zstd:1` reads fewer bytes, not just saves space"
+            warn 'no compression — "compress=zstd:1" reads fewer bytes, not just saves space'
         command -v snapper >/dev/null && snapper -c root list >/dev/null 2>&1 &&
             ok "snapper configured ($(snapper -c root list 2>/dev/null | tail -n +3 | wc -l) snapshots)" ||
             warn "snapper not configured — upgrades are not being protected"

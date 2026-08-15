@@ -42,6 +42,15 @@ packages: branding
 verify:
 	@./scripts/verify-profile.sh
 
+# O shellcheck apanha o que o `bash -n` não apanha (crases em texto, arrays,
+# variáveis por definir). Corre num contentor para não obrigar ninguém a
+# instalá-lo só para construir a ISO.
+lint:
+	@podman run --rm -v "$(REPO_DIR):/w:ro" -w /w \
+		docker.io/koalaman/shellcheck-alpine:stable sh -c \
+		'for f in packaging/*/payload/usr/bin/delonix-* packaging/*/payload/usr/lib/delonix/* scripts/*.sh; do \
+			[ -f "$$f" ] && shellcheck -S warning -f gcc "$$f"; done' || true
+
 check:
 	@./scripts/verify-profile.sh --online
 

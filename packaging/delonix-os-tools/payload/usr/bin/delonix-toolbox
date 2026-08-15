@@ -391,7 +391,7 @@ _lab_docker_up() {
     pod=$(yq -r '.metadata.name' "$f")
     local n; n=$(yq -r '.spec.containers | length' "$f")
     for (( i=0; i<n; i++ )); do
-        local nome imagem args env portas montagens
+        local nome imagem args
         nome=$(yq -r ".spec.containers[$i].name" "$f")
         imagem=$(yq -r ".spec.containers[$i].image" "$f")
         mapfile -t args < <(yq -r ".spec.containers[$i].args[]? // empty" "$f")

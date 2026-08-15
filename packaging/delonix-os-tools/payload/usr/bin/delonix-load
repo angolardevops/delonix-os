@@ -32,12 +32,32 @@ while [[ $# -gt 0 ]]; do
         --mem)   MEM=$2; shift 2 ;;
         --name)  NAME=$2; shift 2 ;;
         --status)
+            # A fonte de verdade são as UNIDADES, não um grep de texto sobre a
+            # árvore de cgroups: essa árvore contém a linha de comando deste
+            # próprio `--status`, por isso o grep encontrava-se a si mesmo e
+            # ainda arrastava três linhas de serviços que nada tinham a ver.
             printf '\n%sContained work running%s\n\n' "$BLD" "$RST"
-            systemd-cgls --user-unit -l 2>/dev/null | grep -A3 'delonix-load' ||
-                printf '  %snothing — the machine is idle%s\n' "$DIM" "$RST"
-            printf '\n'
-            systemctl --user list-units 'delonix-load-*' --no-legend 2>/dev/null |
-                awk '{print "  " $1 "  " $4}' || true
+            unidades=$(systemctl --user list-units 'delonix-load-*' \
+                        --no-legend --plain 2>/dev/null | awk '{print $1}')
+            if [[ -z $unidades ]]; then
+                printf '  %snothing — the machine is idle%s\n\n' "$DIM" "$RST"
+                exit 0
+            fi
+            while read -r u; do
+                [[ -z $u ]] && continue
+                # MemoryCurrent vem em bytes, ou "[not set]" quando a
+                # contabilidade está desligada — daí a validação numérica.
+                mem=$(systemctl --user show "$u" -p MemoryCurrent --value 2>/dev/null)
+                [[ $mem =~ ^[0-9]+$ ]] && mem=$(( mem / 1024 / 1024 ))MB || mem="n/a"
+                cpu=$(systemctl --user show "$u" -p CPUWeight --value 2>/dev/null)
+                estado=$(systemctl --user show "$u" -p SubState --value 2>/dev/null)
+                printf '  %s%s%s\n' "$BLD" "${u%.service}" "$RST"
+                printf '    %s%s · memória %s · peso de CPU %s%s\n' \
+                    "$DIM" "$estado" "$mem" "${cpu:-?}" "$RST"
+                # O que está mesmo lá dentro, sem apanhar o resto do sistema.
+                systemd-cgls --user-unit "$u" --no-pager -l 2>/dev/null |
+                    tail -n +2 | sed 's/^/    /'
+            done <<<"$unidades"
             printf '\n'
             exit 0 ;;
         --help|-h) sed -n '2,18p' "$0" | sed 's/^# \?//'; exit 0 ;;
