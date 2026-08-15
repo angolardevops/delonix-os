@@ -136,6 +136,9 @@ sem um `--force`.
 Confirma também que há mesmo alguma coisa à escuta. Um túnel para uma porta sem
 nada por trás devolve 502, e isso custa dez minutos a perceber.
 
+A URL é capturada, não apenas impressa: o `--list` mostra o que está exposto
+neste momento, e a URL vai para a área de transferência quando há `wl-copy`.
+
 > O `delonix` é o binário do runtime e não tem subcomando `tunnel`. O `.zshrc`
 > intercepta a forma e delega — e deixa de o fazer no dia em que o runtime
 > ganhar o seu. Fora do zsh, usa `delonix-tunnel`.

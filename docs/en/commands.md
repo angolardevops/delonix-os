@@ -133,6 +133,9 @@ MongoDB, etcd, the Kubernetes API, …) are refused unless you add `--force`.
 It also checks that something is actually listening first. A tunnel to a port
 with nothing behind it returns 502, and that costs ten minutes to work out.
 
+The URL is captured, not just printed: `--list` shows what is currently exposed,
+and the URL is copied to the clipboard when `wl-copy` is available.
+
 > `delonix` is the runtime binary and has no `tunnel` subcommand. The `.zshrc`
 > intercepts the form and delegates — and stops doing so the day the runtime
 > gains its own. Outside zsh, use `delonix-tunnel`.

@@ -54,7 +54,7 @@ mkdir -p "$STATE_DIR"
 
 PROVIDER=${DELONIX_TUNNEL_PROVIDER:-pinggy}
 ALVO=""; FORCE=0; MODO=http
-ACCAO=abrir; ID_PARAR=""
+ACCAO=abrir; ID_PARAR=""; EXCLUIR=""
 
 # Portas que quase nunca se querem públicas. Não é uma lista de segurança a
 # sério — é a lista dos enganos que acontecem de verdade às duas da manhã.
@@ -147,10 +147,33 @@ if [[ -n ${PERIGOSAS[$PORTA]:-} ]] && (( ! FORCE )); then
 fi
 
 # Um serviço que não está a ouvir dá um túnel que devolve 502 e dez minutos a
-# perceber porquê. Verificar custa um milissegundo.
-if command -v ss >/dev/null && ! ss -Hltn "sport = :$PORTA" 2>/dev/null | grep -q .; then
-    warn "nada está à escuta na porta $PORTA — o túnel vai abrir e devolver erro"
-    warn "  (arranca o serviço primeiro, ou confirma a porta com: ss -ltnp)"
+# perceber porquê. Só se pode verificar quando o alvo é esta máquina — para um
+# host remoto, os sockets locais não dizem nada.
+PROC=""
+if [[ $HOST =~ ^(localhost|127\.0\.0\.1|::1|0\.0\.0\.0)$ ]] && command -v ss >/dev/null; then
+    escuta=$(ss -Hltnp "sport = :$PORTA" 2>/dev/null)
+    if [[ -z $escuta ]]; then
+        warn "nada está à escuta na porta $PORTA — o túnel vai abrir e devolver erro"
+        warn "  (arranca o serviço primeiro, ou confirma a porta com: ss -ltnp)"
+    else
+        # O nome do processo é melhor sinal do que o número da porta: um
+        # PostgreSQL em 15432 não aparece na lista de portas conhecidas, mas
+        # continua a ser um PostgreSQL. Isto é o que apanha o engano a sério.
+        PROC=$(grep -oP 'users:\(\("\K[^"]+' <<<"$escuta" | head -1)
+    fi
+fi
+
+declare -A PROC_SENSIVEIS=(
+    [postgres]="PostgreSQL"   [mysqld]="MySQL/MariaDB"  [mariadbd]="MariaDB"
+    [redis-server]="Redis"    [valkey-server]="Valkey"  [mongod]="MongoDB"
+    [etcd]="etcd"             [sshd]="SSH"              [dockerd]="daemon do Docker"
+    [kube-apiserver]="API do Kubernetes"                [minio]="MinIO"
+)
+if [[ -n $PROC && -n ${PROC_SENSIVEIS[$PROC]:-} ]] && (( ! FORCE )); then
+    bad "na porta $PORTA está o ${PROC_SENSIVEIS[$PROC]} (processo '$PROC')"
+    warn "expô-lo dá a quem tiver o link o mesmo acesso que tu tens daqui."
+    warn "Se é mesmo o que queres: delonix tunnel --force --provider $PROVIDER $ALVO"
+    exit 1
 fi
 
 ID=$(printf '%s-%s' "$PROVIDER" "$PORTA")
@@ -165,30 +188,84 @@ URL=${2:-}
 EOF
 }
 
+# --- runner comum -------------------------------------------------------------
+# O pinggy e o cloudflare têm o mesmo problema: a URL vem no meio da saída do
+# processo, e nós queremos as duas coisas — mostrá-la à pessoa E guardá-la, para
+# o `--list` servir para alguma coisa. Um pipe resolvia a primeira e estragava a
+# segunda (escondia o PID verdadeiro, que é o que o `--stop` precisa de matar).
+#
+# Daí o registo em ficheiro: o processo escreve lá, um `tail` mostra ao vivo, e
+# nós lemos o mesmo ficheiro à procura do padrão da URL.
+correr() {
+    local padrao=$1; shift
+    local log="$STATE_DIR/$ID.log"
+    : >"$log"
+
+    "$@" >"$log" 2>&1 &
+    PID_PROC=$!
+    guardar "$PID_PROC"
+
+    tail -f -n +1 --pid="$PID_PROC" "$log" 2>/dev/null &
+    PID_TAIL=$!
+
+    # Até 20 segundos à espera da URL, sem prender se o processo morrer antes.
+    local i url=""
+    for (( i=0; i<40; i++ )); do
+        kill -0 "$PID_PROC" 2>/dev/null || break
+        # `EXCLUIR` tira as URLs que casam com o padrão mas não são o túnel —
+        # o pinggy imprime um link para o seu painel comercial ANTES da URL
+        # verdadeira, e sem isto era esse que ficava guardado.
+        url=$(grep -oE "$padrao" "$log" 2>/dev/null |
+              { [[ -n ${EXCLUIR:-} ]] && grep -vE "$EXCLUIR" || cat; } | head -1)
+        [[ -n $url ]] && break
+        sleep 0.5
+    done
+
+    if [[ -n $url ]]; then
+        guardar "$PID_PROC" "$url"
+        printf '\n  %s%s%s\n' "$GRN$BOLD" "$url" "$RST"
+        command -v wl-copy >/dev/null && printf '%s' "$url" | wl-copy 2>/dev/null &&
+            info "URL copiada para a área de transferência"
+        info "Ctrl-C fecha o túnel."
+        printf '\n'
+    else
+        kill -0 "$PID_PROC" 2>/dev/null ||
+            bad "o processo terminou sem devolver uma URL — a saída está acima"
+    fi
+
+    wait "$PID_PROC" 2>/dev/null
+}
+
 # --- provedores ---------------------------------------------------------------
 
 t_pinggy() {
     # Pinggy é SSH e mais nada: `-R0:host:porta` pede um porto remoto e o
     # servidor responde com a URL. Sem binário, sem conta, sem instalar.
     #
-    # `-o StrictHostKeyChecking=accept-new`: a chave do a.pinggy.io não está no
+    # `StrictHostKeyChecking=accept-new`: a chave do a.pinggy.io não está no
     # known_hosts de uma máquina acabada de instalar, e sem isto o ssh fica à
-    # espera de um "yes" que ninguém vê por trás do pipe.
-    local remoto=a.pinggy.io destino
-    [[ $MODO == tcp ]] && destino="tcp@$remoto" || destino="$remoto"
+    # espera de um "yes" que ninguém vê.
+    # `BatchMode=yes`: nunca pedir palavra-passe — se a ligação exigir
+    # autenticação, é para falhar depressa e não ficar pendurado.
+    local destino=a.pinggy.io
+    [[ $MODO == tcp ]] && destino="tcp@$destino"
 
     info "pinggy: túnel anónimo, expira ao fim de 60 minutos"
-    info "Ctrl-C fecha. Para uma sessão sem limite, usa --provider cloudflare."
-    printf '\n'
+    info "Para uma sessão sem limite de tempo: --provider cloudflare"
 
-    ssh -p 443 -R "0:$HOST:$PORTA" \
-        -o StrictHostKeyChecking=accept-new \
-        -o ServerAliveInterval=30 \
-        -o ExitOnForwardFailure=yes \
-        "$destino" &
-    local pid=$!
-    guardar "$pid"
-    wait "$pid"
+    # O domínio das URLs do pinggy MUDA conforme o plano e o servidor:
+    # apanhei `*.run.pinggy-free.link` e `*.free.pinggy.net` na mesma sessão.
+    # Um padrão colado a um deles falha em silêncio — o túnel abre, a URL
+    # aparece no ecrã, e o `--list` diz «(a negociar)» para sempre.
+    # `-T` cala o «Pseudo-terminal will not be allocated», que assusta sem razão.
+    EXCLUIR='dashboard\.pinggy\.io'
+    correr 'https://[a-z0-9.-]+\.pinggy[a-z-]*\.[a-z]{2,4}' \
+        ssh -p 443 -T -R "0:$HOST:$PORTA" \
+            -o StrictHostKeyChecking=accept-new \
+            -o BatchMode=yes \
+            -o ServerAliveInterval=30 \
+            -o ExitOnForwardFailure=yes \
+            "$destino"
 }
 
 t_cloudflare() {
@@ -197,36 +274,9 @@ t_cloudflare() {
 
     info "cloudflare: URL try-cloudflare, dura enquanto o processo viver"
     info "Para um nome estável no teu domínio: cloudflared tunnel login"
-    printf '\n'
 
-    # O cloudflared imprime a URL no meio de uma moldura ASCII. Corre em segundo
-    # plano com o log num ficheiro, para podermos apanhar a URL sem que um pipe
-    # nos esconda o PID verdadeiro — que é o que o --stop precisa de matar.
-    local log="$STATE_DIR/$ID.log"
-    cloudflared tunnel --url "http://$HOST:$PORTA" --no-autoupdate >"$log" 2>&1 &
-    local pid=$!
-    guardar "$pid"
-
-    # Espera pela URL até 20 segundos, sem prender se o cloudflared falhar.
-    local i url=""
-    for (( i=0; i<40; i++ )); do
-        kill -0 "$pid" 2>/dev/null || break
-        url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" 2>/dev/null | head -1)
-        [[ -n $url ]] && break
-        sleep 0.5
-    done
-
-    if [[ -n $url ]]; then
-        guardar "$pid" "$url"
-        printf '\n  %s%s%s\n\n' "$GRN$BOLD" "$url" "$RST"
-        info "Ctrl-C fecha o túnel. O registo completo: $log"
-    else
-        bad "o cloudflared não devolveu uma URL — o registo está em $log"
-        tail -5 "$log" 2>/dev/null | sed 's/^/      /'
-    fi
-
-    wait "$pid"
-    rm -f "$log"
+    correr 'https://[a-z0-9-]+\.trycloudflare\.com' \
+        cloudflared tunnel --url "http://$HOST:$PORTA" --no-autoupdate
 }
 
 t_ngrok() {
@@ -246,14 +296,20 @@ t_ngrok() {
     fi
 
     info "ngrok: inspecção dos pedidos em http://localhost:4040"
-    printf '\n'
-    ngrok "$MODO" "$HOST:$PORTA" --log stdout &
-    local pid=$!
-    guardar "$pid"
-    wait "$pid"
+
+    correr 'https://[a-z0-9-]+\.ngrok(-free)?\.(app|io|dev)' \
+        ngrok "$MODO" "$HOST:$PORTA" --log stdout
 }
 
-trap 'rm -f "$FICHEIRO"' EXIT INT TERM
+# Apagar só o ficheiro de estado deixava o túnel aberto e invisível — pior do
+# que não limpar nada. Mata-se o processo, o tail, e só depois o ficheiro.
+PID_PROC=""; PID_TAIL=""
+limpar() {
+    [[ -n $PID_TAIL ]] && kill "$PID_TAIL" 2>/dev/null
+    [[ -n $PID_PROC ]] && kill "$PID_PROC" 2>/dev/null
+    rm -f "$FICHEIRO" "$STATE_DIR/$ID.log"
+}
+trap limpar EXIT INT TERM
 
 case $PROVIDER in
     pinggy)              t_pinggy ;;
