@@ -147,6 +147,14 @@ cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
     warn "rede: ${cc:-?} + ${qdisc:-?} (o BBR sem fq perde o pacing)"
 systemctl is-active --quiet ananicy-cpp && ok "ananicy-cpp a dar prioridade ao foco" ||
     warn "ananicy-cpp parado"
+systemctl is-active --quiet systemd-oomd && ok "systemd-oomd a vigiar a pressão (PSI)" ||
+    warn "systemd-oomd parado — sobra o earlyoom, que só vê memória livre"
+acct=$(systemctl show -p DefaultMemoryAccounting --value 2>/dev/null)
+[[ $acct == yes ]] && ok "contabilidade de memória ligada (sem isto os limites não valem)" ||
+    bad "contabilidade de memória desligada — CPUWeight/MemoryHigh não têm efeito"
+peso=$(systemctl show user.slice -p CPUWeight --value 2>/dev/null)
+[[ ${peso:-100} -gt 100 ]] && ok "user.slice com prioridade sobre o sistema (CPUWeight=$peso)" ||
+    warn "user.slice sem prioridade (CPUWeight=${peso:-?})"
 
 section "Desktop"
 if [[ ${XDG_SESSION_TYPE:-} == wayland ]]; then
@@ -175,6 +183,34 @@ for u in postgresql valkey mongodb; do
         printf '  %s·%s %-12s parada\n' "$DIM" "$RST" "$u"
     fi
 done
+
+section "Sistema de ficheiros"
+raiz=$(findmnt -no FSTYPE / 2>/dev/null)
+case $raiz in
+    btrfs)
+        ok "raiz em btrfs"
+        findmnt -no OPTIONS / | grep -q compress && ok "compressão activa" ||
+            warn "sem compressão — `compress=zstd:1` lê menos bytes, não só poupa espaço"
+        command -v snapper >/dev/null && snapper -c root list >/dev/null 2>&1 &&
+            ok "snapper configurado ($(snapper -c root list 2>/dev/null | tail -n +3 | wc -l) instantâneos)" ||
+            warn "snapper sem configuração — as actualizações não estão a ser protegidas"
+        if [[ -d /var/lib/libvirt/images ]]; then
+            lsattr -d /var/lib/libvirt/images 2>/dev/null | grep -q C &&
+                ok "imagens de VM sem copy-on-write" ||
+                warn "imagens de VM com CoW — vão fragmentar (ver docs/sistemas-de-ficheiros)"
+        fi
+        ;;
+    ext4|xfs) ok "raiz em $raiz (sem instantâneos: as actualizações não têm rede)" ;;
+    *) warn "raiz em ${raiz:-?}" ;;
+esac
+
+section "Idioma"
+lang=$(. /etc/locale.conf 2>/dev/null; echo "${LANG:-}")
+case $lang in
+    pt_AO*) ok "pt_AO — convenções de Angola (Kz, +244)" ;;
+    pt_PT*) warn "pt_PT — o pt_AO não foi gerado (corre: sudo /usr/lib/delonix/gerar-locale)" ;;
+    *)      warn "LANG=${lang:-não definido}" ;;
+esac
 
 section "Rede"
 ip -br link | awk '{printf "  %-14s %s\n", $1, $2}'

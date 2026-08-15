@@ -1,0 +1,15 @@
+# O glibc regenera os locales a partir do /etc/locale.gen quando é actualizado.
+# A nossa linha sobrevive lá; a definição pt_AO vem do delonix-os-settings. Este
+# gancho garante que os dois voltam a encontrar-se depois de qualquer um deles
+# mudar.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = glibc
+Target = delonix-os-settings
+
+[Action]
+Description = A garantir o locale pt_AO (Angola)...
+When = PostTransaction
+Exec = /usr/lib/delonix/gerar-locale

@@ -58,6 +58,15 @@ export GOTOOLCHAIN=auto        # um projecto que pede outra versão de Go busca-
 export CARGO_HOME="$HOME/.cargo"
 export RUSTUP_HOME="$HOME/.rustup"
 export SCCACHE_CACHE_SIZE="10G"
+# Paralelismo por omissão: TODOS os núcleos menos dois. É a diferença entre
+# "compila e trabalho ao mesmo tempo" e "compila e vou buscar café". Quem quer
+# a máquina toda: `make -j$(nproc)` continua a funcionar, é explícito.
+_delonix_jobs=$(( $(nproc) > 2 ? $(nproc) - 2 : 1 ))
+export MAKEFLAGS="-j${_delonix_jobs}"
+export CARGO_BUILD_JOBS="${_delonix_jobs}"
+export CMAKE_BUILD_PARALLEL_LEVEL="${_delonix_jobs}"
+export GOMAXPROCS="${_delonix_jobs}"
+unset _delonix_jobs
 # Python: uv gere ambientes e versões; nada de pip global a partir root.
 export UV_PYTHON_PREFERENCE=managed
 export PIP_REQUIRE_VIRTUALENV=true
@@ -118,6 +127,9 @@ alias pps='podman ps -a'
 alias dps='docker ps -a'
 
 # IaC
+# carga pesada sem perder a máquina
+alias carga='delonix-carga'
+
 # linguagens
 alias c='cargo'
 alias cb='cargo build'

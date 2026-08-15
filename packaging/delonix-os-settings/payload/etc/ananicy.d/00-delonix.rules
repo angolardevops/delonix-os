@@ -1,0 +1,54 @@
+# DelonixOS — quem cede quando a máquina está em carga.
+#
+# O ananicy-cpp aplica nice/ionice/scheduler automaticamente, por nome de
+# processo. Sem isto, o compilador e o compositor competem em pé de igualdade —
+# e é o compositor que perde, porque o compilador tem 32 threads.
+#
+# Regra: o que o utilizador VÊ tem prioridade; o que ele espera, cede.
+
+# --- o que o utilizador vê (prioridade alta) ---------------------------------
+{ "name": "kwin_wayland", "type": "LowLatency_RT" }
+{ "name": "kwin_x11",     "type": "LowLatency_RT" }
+{ "name": "plasmashell",  "nice": -5,  "ioclass": "realtime", "sched": "rr", "rtprio": 1 }
+{ "name": "kitty",        "nice": -3 }
+{ "name": "konsole",      "nice": -3 }
+{ "name": "pipewire",     "type": "LowLatency_RT" }
+{ "name": "wireplumber",  "type": "LowLatency_RT" }
+{ "name": "obs",          "nice": -5, "ioclass": "realtime" }
+
+# --- o que se espera que demore (cede a vez) ---------------------------------
+# Compiladores: nice 10 + I/O idle. Continuam a usar a máquina toda quando ela
+# está livre; só perdem a disputa quando há alguém à espera.
+{ "name": "cc1plus",   "nice": 10, "ioclass": "idle" }
+{ "name": "cc1",       "nice": 10, "ioclass": "idle" }
+{ "name": "rustc",     "nice": 10, "ioclass": "idle" }
+{ "name": "cargo",     "nice": 10, "ioclass": "idle" }
+{ "name": "go",        "nice": 10, "ioclass": "idle" }
+{ "name": "compile",   "nice": 10, "ioclass": "idle" }
+{ "name": "ld",        "nice": 10, "ioclass": "idle" }
+{ "name": "mold",      "nice": 10, "ioclass": "idle" }
+{ "name": "make",      "nice": 12, "ioclass": "idle" }
+{ "name": "ninja",     "nice": 12, "ioclass": "idle" }
+{ "name": "sccache",   "nice": 12, "ioclass": "idle" }
+{ "name": "node",      "nice":  5 }
+{ "name": "tsc",       "nice": 10, "ioclass": "idle" }
+
+# --- containers e imagens: pesados e pacientes -------------------------------
+{ "name": "buildah",   "nice": 12, "ioclass": "idle" }
+{ "name": "podman",    "nice":  5 }
+{ "name": "delonix",   "nice":  5 }
+{ "name": "skopeo",    "nice": 12, "ioclass": "idle" }
+{ "name": "zstd",      "nice": 15, "ioclass": "idle" }
+{ "name": "xz",        "nice": 15, "ioclass": "idle" }
+
+# --- VMs: não são interactivas, mas quem está lá dentro acha que são ---------
+{ "name": "qemu-system-x86_64", "nice": -2 }
+{ "name": "cloud-hypervisor",   "nice": -2 }
+
+# --- trabalho de fundo que nunca deve incomodar ------------------------------
+{ "name": "restic",     "nice": 19, "ioclass": "idle" }
+{ "name": "rclone",     "nice": 19, "ioclass": "idle" }
+{ "name": "snapper",    "nice": 19, "ioclass": "idle" }
+{ "name": "btrfs",      "nice": 19, "ioclass": "idle" }
+{ "name": "pacman",     "nice":  5 }
+{ "name": "ffmpeg",     "nice": 10, "ioclass": "idle" }

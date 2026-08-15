@@ -39,6 +39,7 @@ declare -A DESC=(
     [ai-local]="Ollama: modelos locais na GPU/NPU já activadas"
     [docs]="Hugo e Zola: portais e sites estáticos (o mkdocs já vem)"
     [davinci]="DaVinci Resolve (o download exige registo na Blackmagic)"
+    [zfs]="ZFS (módulo fora do kernel — lê o aviso antes)"
     [legendas]="whisper.cpp + Aegisub: transcrever e legendar na GPU/NPU local"
     [security-audit]="rkhunter + clamav: varredura periódica do posto"
 )
@@ -62,6 +63,7 @@ declare -A PKGS=(
     [ai-local]="ollama"
     [docs]="hugo zola"
     [davinci]="__davinci__"
+    [zfs]="zfs-dkms zfs-utils"
     [legendas]="whisper.cpp-bin aegisub"
     [security-audit]="rkhunter clamav"
 )
@@ -176,6 +178,24 @@ cmd_install() {
         [[ -v PKGS[$profile] ]] || die "perfil desconhecido: $profile"
         if [[ ${PKGS[$profile]} == "__delonix__" ]]; then install_delonix; continue; fi
         if [[ ${PKGS[$profile]} == "__davinci__" ]]; then install_davinci; continue; fi
+        if [[ $profile == zfs ]]; then
+            cat <<EOF
+
+  ${BLD}Antes de instalar o ZFS, o que isto significa numa distro rolling${RST}
+
+  O módulo do ZFS vive FORA do kernel (a licença impede que venha lá dentro).
+  Cada actualização de kernel obriga a recompilá-lo, e se isso falhar — porque o
+  ZFS ainda não suporta esse kernel — a máquina arranca sem os teus pools.
+
+  Faz sentido: um disco de dados separado, ou um servidor com kernel fixo.
+  Não faz: a raiz de um posto que actualiza todas as semanas.
+
+  Se avançares, mantém o \`linux-lts\` instalado como kernel de recurso.
+
+EOF
+            read -rp "  Continuar? [s/N] " r
+            [[ ${r,,} == s ]] || { info "cancelado"; continue; }
+        fi
         info "$profile — ${DESC[$profile]}"
         case $h in
             yay)    yay -S --needed --noconfirm ${PKGS[$profile]} ;;

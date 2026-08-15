@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# `delonix-carga` — correr trabalho pesado sem perder a máquina.
+#
+#   delonix-carga cargo build --release
+#   delonix-carga -- make -j32
+#   delonix-carga --cpu 30 --mem 50% podman build .
+#   delonix-carga --estado          # o que está a correr contido, e quanto gasta
+#
+# O `ananicy-cpp` já baixa a prioridade dos compiladores automaticamente. Isto
+# é o passo seguinte, para quando isso não chega: põe o comando num cgroup
+# próprio com peso de CPU e de I/O reduzidos e um tecto de memória, através de
+# `systemd-run --user --scope`.
+#
+# A diferença prática: com o nice, um build de 32 threads continua a poder
+# encher a memória e a fila do disco. Com um cgroup, não pode — e o desktop
+# nunca chega a engasgar. O build fica alguns por cento mais lento; o utilizador
+# continua a poder trabalhar, que é o que interessa.
+set -euo pipefail
+
+RED=$'\e[31m'; GRN=$'\e[32m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
+die() { printf '%s✗%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
+
+CPU=20          # peso relativo (o default do sistema é 100)
+IO=20
+MEM=70%         # tecto suave: acima disto o kernel recupera páginas deste cgroup
+NOME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --cpu)   CPU=$2; shift 2 ;;
+        --io)    IO=$2; shift 2 ;;
+        --mem)   MEM=$2; shift 2 ;;
+        --nome)  NOME=$2; shift 2 ;;
+        --estado)
+            printf '\n%sTrabalho contido a correr%s\n\n' "$BLD" "$RST"
+            systemd-cgls --user-unit -l 2>/dev/null | grep -A3 'delonix-carga' ||
+                printf '  %snada — a máquina está livre%s\n' "$DIM" "$RST"
+            printf '\n'
+            systemctl --user list-units 'delonix-carga-*' --no-legend 2>/dev/null |
+                awk '{print "  " $1 "  " $4}' || true
+            printf '\n'
+            exit 0 ;;
+        --help|-h) sed -n '2,18p' "$0" | sed 's/^# \?//'; exit 0 ;;
+        --) shift; break ;;
+        -*) die "opção desconhecida: $1" ;;
+        *) break ;;
+    esac
+done
+
+(( $# )) || die "diz-me o que correr: delonix-carga cargo build --release"
+command -v systemd-run >/dev/null || die "preciso do systemd-run"
+
+NOME=${NOME:-$(basename "$1")}
+UNIDADE="delonix-carga-${NOME}-$$"
+
+# Sem cgroup delegado isto não tem efeito nenhum — mais vale dizê-lo do que
+# fingir que protegeu.
+CTRL=/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
+if [[ -r $CTRL ]] && ! grep -q memory "$CTRL"; then
+    printf '%s!%s sem controlador de memória delegado — o limite não será aplicado\n' \
+        "$RED" "$RST" >&2
+    printf '  %scorre `delonix-doctor` para ver porquê%s\n' "$DIM" "$RST" >&2
+fi
+
+printf '%s→%s contido: CPUWeight=%s IOWeight=%s MemoryHigh=%s\n' \
+    "$BLD" "$RST" "$CPU" "$IO" "$MEM"
+
+exec systemd-run --user --scope --quiet \
+    --unit="$UNIDADE" \
+    --property=CPUWeight="$CPU" \
+    --property=IOWeight="$IO" \
+    --property=MemoryHigh="$MEM" \
+    --property=ManagedOOMMemoryPressure=kill \
+    -- "$@"

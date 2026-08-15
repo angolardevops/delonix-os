@@ -69,6 +69,20 @@ if command -v virsh >/dev/null; then
     install -d -m 0771 -o root -g libvirt /var/lib/libvirt/images 2>/dev/null || true
 fi
 
+# --- 4b. locale de Angola ------------------------------------------------------
+[[ -x /usr/lib/delonix/gerar-locale ]] && /usr/lib/delonix/gerar-locale
+
+# --- 4c. imagens de VM em Btrfs: desligar copy-on-write ------------------------
+# Uma imagem de disco é acesso aleatório: com CoW fragmenta-se até ficar lenta, e
+# cada instantâneo passa a "guardar" dezenas de GB. `chattr +C` só funciona em
+# directórios VAZIOS — daí ser aqui, antes de existir a primeira VM.
+for dir in /var/lib/libvirt/images /var/lib/delonix; do
+    [[ -d $dir ]] || continue
+    [[ $(stat -fc %T "$dir" 2>/dev/null) == btrfs ]] || continue
+    [[ -z $(ls -A "$dir" 2>/dev/null) ]] || continue
+    chattr +C "$dir" 2>/dev/null && log "copy-on-write desligado em $dir"
+done
+
 # --- 5. perfil de desempenho para labs -----------------------------------------
 if command -v tuned-adm >/dev/null; then
     systemctl start tuned 2>/dev/null || true

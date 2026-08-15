@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Gera o locale pt_AO e aponta o sistema para ele.
+#
+# O glibc não traz `pt_AO` — a definição vem no pacote delonix-os-settings.
+# Este script acrescenta-a ao /etc/locale.gen (que pertence ao glibc, por isso
+# não pode ser um ficheiro nosso) e compila-a.
+#
+# Regra de ouro: se alguma coisa correr mal, o sistema fica em pt_PT e não num
+# locale inexistente. Um LANG que não existe estraga tudo, desde as datas até ao
+# arranque de aplicações Qt.
+set -uo pipefail
+
+FONTE=/usr/share/i18n/locales/pt_AO
+GEN=/etc/locale.gen
+
+log() { printf '[delonix-locale] %s\n' "$*"; }
+
+[[ -f $FONTE ]] || { log "sem a definição pt_AO — nada a fazer"; exit 0; }
+
+# 1. garantir as linhas no locale.gen (pt_PT fica como rede de segurança)
+for linha in "pt_AO.UTF-8 UTF-8" "pt_PT.UTF-8 UTF-8" "en_US.UTF-8 UTF-8"; do
+    grep -qxF "$linha" "$GEN" 2>/dev/null || echo "$linha" >>"$GEN"
+done
+
+# 2. compilar
+if locale-gen 2>&1 | grep -q 'pt_AO'; then
+    log "locale pt_AO gerado"
+else
+    # locale-gen pode ser silencioso; confirmamos a sério
+    locale-gen >/dev/null 2>&1 || true
+fi
+
+# 3. só apontamos o sistema para lá DEPOIS de confirmar que existe
+if locale -a 2>/dev/null | grep -qi '^pt_AO'; then
+    cat >/etc/locale.conf <<'CONF'
+# DelonixOS — convenções de Angola.
+#
+# O `pt_AO` dá a moeda (Kz), o indicativo (+244) e o país. As *traduções* das
+# aplicações continuam a vir do pt_PT, porque é o que existe traduzido — e é
+# isso que a cadeia do LANGUAGE resolve, por ordem de preferência.
+LANG=pt_AO.UTF-8
+LANGUAGE=pt_AO:pt_PT:pt:en_US
+LC_COLLATE=pt_PT.UTF-8
+CONF
+    log "sistema em pt_AO.UTF-8 (traduções vindas do pt_PT)"
+else
+    log "pt_AO não pôde ser gerado — a ficar em pt_PT, que existe de certeza"
+    cat >/etc/locale.conf <<'CONF'
+LANG=pt_PT.UTF-8
+LANGUAGE=pt_PT:pt:en_US
+CONF
+fi

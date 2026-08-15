@@ -159,8 +159,18 @@ Três coisas que se recusa a fazer:
   valer) e buffers TCP subidos.
 - **GPU/NPU**: OpenCL e Level Zero em Intel, VA-API para o vídeo ser descodificado
   na GPU em vez da CPU, e o **driver da NPU** dos Core Ultra.
-- **Resposta ao utilizador**: o `ananicy-cpp` dá prioridade ao processo em
-  primeiro plano, para um `cargo build` a 32 threads não engasgar o browser.
+- **Não travar sob carga** — o ponto que separa uma máquina de trabalho de uma
+  que se usa à espera: contabilidade de recursos ligada no systemd (sem ela,
+  nenhum limite tem efeito), `user.slice` com prioridade sobre o sistema,
+  `systemd-oomd` a decidir por **pressão (PSI)** em vez de RAM livre, regras do
+  `ananicy-cpp` que baixam compiladores e sobem o compositor, e
+  `MAKEFLAGS`/`CARGO_BUILD_JOBS` a deixar dois núcleos livres por omissão.
+  Para o resto, `delonix-carga cargo build` põe o trabalho num cgroup com peso
+  reduzido — o build fica alguns por cento mais lento e tu continuas a poder
+  trabalhar.
+- **Angola por omissão**: locale `pt_AO` (Kwanza, +244, Angola) gerado no
+  primeiro arranque, com recurso ao `pt_PT` se falhar — nunca um locale
+  inexistente. As traduções vêm do pt_PT, que é o que existe traduzido.
 
 O `delonix-doctor` verifica tudo isto e sai com código diferente de zero se
 faltar alguma coisa.
@@ -280,6 +290,7 @@ delonix-os/
 | [Ferramentas por perfil](docs/pt-AO/ferramentas-por-perfil.md) | [Tools by profile](docs/en/tools-by-profile.md) |
 | [CLI `delonixos`](docs/pt-AO/cli.md) | [`delonixos` CLI](docs/en/cli.md) |
 | [`delonix-toolbox`](docs/pt-AO/delonix-toolbox.md) | [`delonix-toolbox`](docs/en/delonix-toolbox.md) |
+| [Sistema de ficheiros e disco](docs/pt-AO/sistemas-de-ficheiros.md) | [Filesystem and disk layout](docs/en/filesystems.md) |
 | [Decisões de desenho](docs/pt-AO/decisoes.md) | [Design decisions](docs/en/decisions.md) |
 | [Validar um build](docs/pt-AO/validacao.md) | [Validating a build](docs/en/validation.md) |
 | [Roteiro](docs/pt-AO/roteiro.md) | [Roadmap](docs/en/roadmap.md) |

@@ -156,8 +156,17 @@ This is what separates a distro with nice packages from one that works:
   makes it worth having) and raised TCP buffers.
 - **GPU/NPU**: OpenCL and Level Zero on Intel, VA-API so video decodes on the GPU
   instead of the CPU, and the **NPU driver** for Core Ultra.
-- **Responsiveness**: `ananicy-cpp` prioritises the foreground process, so a
-  32-thread `cargo build` does not stall the browser.
+- **Not freezing under load** — what separates a machine you work on from one you
+  wait for: resource accounting enabled in systemd (without it no limit has any
+  effect), `user.slice` prioritised over the system, `systemd-oomd` deciding by
+  **pressure (PSI)** rather than free RAM, `ananicy-cpp` rules that lower
+  compilers and raise the compositor, and `MAKEFLAGS`/`CARGO_BUILD_JOBS` leaving
+  two cores free by default. For everything else, `delonix-carga cargo build`
+  puts the work in a weight-limited cgroup — the build gets a few percent slower
+  and you keep working.
+- **Angola by default**: a `pt_AO` locale (Kwanza, +244, Angola) generated on
+  first boot, falling back to `pt_PT` if it fails — never a locale that does not
+  exist. Translations come from pt_PT, which is what exists translated.
 
 `delonix-doctor` checks all of it and exits non-zero if something is missing.
 
@@ -275,6 +284,7 @@ delonix-os/
 | [Tools by profile](docs/en/tools-by-profile.md) | [Ferramentas por perfil](docs/pt-AO/ferramentas-por-perfil.md) |
 | [`delonixos` CLI](docs/en/cli.md) | [CLI `delonixos`](docs/pt-AO/cli.md) |
 | [`delonix-toolbox`](docs/en/delonix-toolbox.md) | [`delonix-toolbox`](docs/pt-AO/delonix-toolbox.md) |
+| [Filesystem and disk layout](docs/en/filesystems.md) | [Sistema de ficheiros e disco](docs/pt-AO/sistemas-de-ficheiros.md) |
 | [Design decisions](docs/en/decisions.md) | [Decisões de desenho](docs/pt-AO/decisoes.md) |
 | [Validating a build](docs/en/validation.md) | [Validar um build](docs/pt-AO/validacao.md) |
 | [Roadmap](docs/en/roadmap.md) | [Roteiro](docs/pt-AO/roteiro.md) |
