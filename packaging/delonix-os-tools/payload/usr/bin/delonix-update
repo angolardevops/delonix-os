@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# `delonix-update` — o mesmo que `delonix update`, para quem não está no zsh
-# desta distro (scripts, cron, outra shell).
+# delonix-update — the same as `delonix update`, for anything that is not the
+# distro's zsh: scripts, cron, another shell.
 #
-# Existe como ficheiro próprio de propósito: uma função de shell não serve um
-# `systemd timer` nem um `ssh máquina delonix-update`.
+# It exists as a real file on purpose: a shell function is no use to a systemd
+# timer or to `ssh machine delonix-update`.
 exec delonix-toolbox update "$@"

@@ -85,7 +85,7 @@ if command -v virsh >/dev/null; then
 fi
 
 # --- 4b. locale de Angola ------------------------------------------------------
-[[ -x /usr/lib/delonix/gerar-locale ]] && /usr/lib/delonix/gerar-locale
+[[ -x /usr/lib/delonix/generate-locale ]] && /usr/lib/delonix/generate-locale
 
 # --- 4c. imagens de VM em Btrfs: desligar copy-on-write ------------------------
 # Uma imagem de disco é acesso aleatório: com CoW fragmenta-se até ficar lenta, e

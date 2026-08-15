@@ -12,4 +12,4 @@ Target = delonix-os-settings
 [Action]
 Description = A garantir o locale pt_AO (Angola)...
 When = PostTransaction
-Exec = /usr/lib/delonix/gerar-locale
+Exec = /usr/lib/delonix/generate-locale

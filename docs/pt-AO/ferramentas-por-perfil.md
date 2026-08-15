@@ -67,6 +67,24 @@ Vem o pacote `rust` e não o `rustup`, de propósito: funciona **sem rede**, no
 primeiro arranque. Várias toolchains ficam a um comando —
 `delonix-toolbox install lang-rust-multi`.
 
+### Contribuir para o kernel Linux
+
+O conjunto que o `base-devel` não traz e que se descobre um erro obscuro de cada
+vez: `bc`, `cpio`, `flex`, `bison`, `elfutils`, `pahole` (BTF), `sparse`,
+`cscope`, `b4`, `patchutils`, e os três módulos Perl sem os quais o
+`git send-email` falha na autenticação.
+
+E o comando que remove a cerimónia:
+
+```bash
+delonix-kernel setup && delonix-kernel config && delonix-kernel build --install
+delonix-kernel boot     # arranca o kernel compilado numa VM — sem instalar nada
+```
+
+O `install` acrescenta uma entrada **separada** no GRUB: o teu kernel de
+trabalho fica intacto, e se o novo não arrancar escolhes o antigo no mesmo menu.
+Detalhes em [Contribuir para o kernel](kernel.md).
+
 ### Bases de dados — instaladas, paradas
 
 PostgreSQL, Redis (`valkey`) e MongoDB vêm instaladas mas **não arrancam com o

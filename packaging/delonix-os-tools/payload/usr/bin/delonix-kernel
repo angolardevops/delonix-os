@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+# delonix-kernel — build, boot and install a Linux kernel in one command.
+#
+#   delonix-kernel setup                 clone mainline and configure git for patches
+#   delonix-kernel config                start from the running kernel's config
+#   delonix-kernel build                 build it (leaves 2 cores for you)
+#   delonix-kernel boot                  boot it in a VM, without installing
+#   delonix-kernel install               install it as a SEPARATE boot entry
+#   delonix-kernel build --install       the single command you probably want
+#
+# Design rule: your working kernel is never touched. A kernel you built gets its
+# own name, its own initramfs and its own GRUB entry — if it does not boot, you
+# pick the distro kernel in the menu and carry on. Anything that "upgrades" the
+# running kernel in place is how people end up with an unbootable laptop and a
+# USB stick.
+set -euo pipefail
+
+RED=$'\e[31m'; GRN=$'\e[32m'; YLW=$'\e[33m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
+step() { printf '\n%s→%s %s\n' "$BLD" "$RST" "$*"; }
+ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$*"; }
+warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$*"; }
+die()  { printf '%s✗%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
+
+SRC=${DELONIX_KERNEL_SRC:-$HOME/src/linux}
+# Leave two cores for the desktop. A kernel build with -j$(nproc) is the fastest
+# way to make a machine unusable for fifteen minutes.
+JOBS=${DELONIX_KERNEL_JOBS:-$(( $(nproc) > 2 ? $(nproc) - 2 : 1 ))}
+SUFFIX=${DELONIX_KERNEL_SUFFIX:--delonix}
+LLVM=${DELONIX_KERNEL_LLVM:-0}
+
+_make() {
+    local args=(-j"$JOBS" LOCALVERSION="$SUFFIX")
+    (( LLVM )) && args+=(LLVM=1)
+    # `delonix-load` keeps the build in a weight-limited cgroup, so a 30-minute
+    # compile does not make the desktop stutter. Falls back cleanly if absent.
+    if command -v delonix-load >/dev/null; then
+        delonix-load --nome kernel make "${args[@]}" "$@"
+    else
+        nice -n 10 make "${args[@]}" "$@"
+    fi
+}
+
+_require_src() {
+    [[ -f $SRC/Makefile && -d $SRC/kernel ]] ||
+        die "no kernel tree at $SRC — run: delonix-kernel setup"
+}
+
+cmd_setup() {
+    local url=${1:-https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git}
+    if [[ -d $SRC/.git ]]; then
+        ok "tree already at $SRC"
+    else
+        step "cloning $url"
+        mkdir -p "$(dirname "$SRC")"
+        # A shallow clone saves ~3 GB, but breaks `git describe`, bisect and
+        # `git log` on old code — the three things you clone the kernel for.
+        git clone "$url" "$SRC"
+    fi
+
+    step "checking the patch workflow"
+    for t in b4 sparse pahole virtme-ng; do
+        command -v "$t" >/dev/null && ok "$t" || warn "$t missing"
+    done
+    git config --get user.email >/dev/null 2>&1 &&
+        ok "git user.email: $(git config --get user.email)" ||
+        warn "set it: git config --global user.email 'you@example.com'"
+    git config --get sendemail.smtpserver >/dev/null 2>&1 &&
+        ok "git send-email configured" ||
+        cat <<EOF
+  ${DIM}git send-email is not configured. For Gmail with an app password:
+      git config --global sendemail.smtpserver smtp.gmail.com
+      git config --global sendemail.smtpserverport 587
+      git config --global sendemail.smtpencryption tls
+      git config --global sendemail.smtpuser you@gmail.com${RST}
+EOF
+    printf '\n  Next:  delonix-kernel config && delonix-kernel build --install\n\n'
+}
+
+cmd_config() {
+    _require_src
+    cd "$SRC"
+    step "configuring from the running kernel"
+
+    if [[ -f /proc/config.gz ]]; then
+        zcat /proc/config.gz >.config
+        ok "base: /proc/config.gz (running kernel)"
+    elif [[ -f /boot/config-$(uname -r) ]]; then
+        cp "/boot/config-$(uname -r)" .config
+        ok "base: /boot/config-$(uname -r)"
+    else
+        make defconfig
+        warn "no running config found — started from defconfig"
+    fi
+
+    # olddefconfig answers every new symbol with its default instead of asking
+    # 400 questions. It is the difference between a 5-second config and an hour.
+    make olddefconfig >/dev/null
+    ok "new options answered with their defaults (olddefconfig)"
+
+    # Distro kernels enable every module ever written; most of them are for
+    # hardware you do not have. This is what turns a 90-minute build into 8.
+    if [[ ${1:-} == --local ]]; then
+        step "trimming to the modules loaded RIGHT NOW"
+        warn "plug in everything you use first (dock, webcam, USB) — what is not"
+        warn "loaded now will not be built"
+        make localmodconfig
+    fi
+
+    # Debug symbols are what make a crash report useful; BTF is what makes
+    # bpftrace and CO-RE work. Both cost build time and disk.
+    scripts/config --enable DEBUG_INFO_DWARF5 \
+                   --enable DEBUG_INFO_BTF \
+                   --enable KPROBES \
+                   --enable FTRACE \
+                   --disable DEBUG_INFO_REDUCED \
+                   --set-str LOCALVERSION "$SUFFIX" 2>/dev/null || true
+    make olddefconfig >/dev/null
+    ok "debug symbols, BTF, kprobes and ftrace enabled"
+    printf '  %sTo change anything by hand: make menuconfig (in %s)%s\n' "$DIM" "$SRC" "$RST"
+}
+
+cmd_build() {
+    local install=0 boot=0
+    while (( $# )); do
+        case $1 in
+            --install) install=1; shift ;;
+            --boot)    boot=1; shift ;;
+            --llvm)    LLVM=1; shift ;;
+            *) die "unknown option: $1" ;;
+        esac
+    done
+    _require_src
+    cd "$SRC"
+    [[ -f .config ]] || { warn "no .config — configuring first"; cmd_config; }
+
+    local version
+    version=$(make -s kernelrelease 2>/dev/null || echo unknown)
+    step "building $version with $JOBS jobs$( ((LLVM)) && echo ' (LLVM)')"
+    printf '  %sthis takes 10-90 minutes; the desktop stays usable%s\n' "$DIM" "$RST"
+
+    local t0=$SECONDS
+    _make all
+    ok "built in $(( (SECONDS - t0) / 60 )) min $(( (SECONDS - t0) % 60 ))s"
+
+    (( boot ))    && cmd_boot
+    (( install )) && cmd_install
+    (( install || boot )) || printf '\n  Next:  delonix-kernel boot   (test it)  ·  delonix-kernel install\n\n'
+}
+
+cmd_boot() {
+    _require_src
+    cd "$SRC"
+    command -v vng >/dev/null || die "virtme-ng not installed (package: virtme-ng)"
+    step "booting the built kernel in a VM"
+    printf '  %syour /home is mounted read-only; the VM has no disk of its own.%s\n' "$DIM" "$RST"
+    printf '  %sexit with Ctrl-D or `poweroff`.%s\n\n' "$DIM" "$RST"
+    # This is the loop that makes kernel work bearable: build, boot, see the
+    # oops, fix, repeat — without rebooting your machine even once.
+    vng --run . --cpus "$JOBS" --verbose
+}
+
+cmd_install() {
+    _require_src
+    cd "$SRC"
+    local version
+    version=$(make -s kernelrelease) || die "cannot determine the version"
+    [[ -f arch/x86/boot/bzImage ]] || die "nothing built yet — run: delonix-kernel build"
+
+    step "installing $version as a separate boot entry"
+    warn "your current kernel ($(uname -r)) is not touched"
+
+    sudo make -j"$JOBS" modules_install
+    ok "modules → /lib/modules/$version"
+
+    sudo cp arch/x86/boot/bzImage "/boot/vmlinuz-$version"
+    sudo cp System.map "/boot/System.map-$version"
+    sudo cp .config "/boot/config-$version"
+    ok "kernel → /boot/vmlinuz-$version"
+
+    # An initramfs built from a preset survives the next mkinitcpio -P; one built
+    # by hand does not, and the kernel silently stops booting after an upgrade.
+    sudo tee "/etc/mkinitcpio.d/$version.preset" >/dev/null <<EOF
+# Built by delonix-kernel — a self-built kernel, kept apart from the distro one.
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/boot/vmlinuz-$version"
+PRESETS=('default')
+default_image="/boot/initramfs-$version.img"
+EOF
+    sudo mkinitcpio -p "$version"
+    ok "initramfs → /boot/initramfs-$version.img"
+
+    if command -v grub-mkconfig >/dev/null; then
+        sudo grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
+        ok "GRUB entry created"
+    else
+        warn "GRUB not found — add the entry to your bootloader by hand"
+    fi
+
+    cat <<EOF
+
+  ${BLD}Installed.${RST} Reboot and pick "$version" in the GRUB menu.
+
+  If it does not boot: pick your distro kernel in the same menu — nothing was
+  replaced. To remove this one afterwards:
+
+      delonix-kernel remove $version
+
+EOF
+}
+
+cmd_remove() {
+    local version=${1:?usage: delonix-kernel remove <version>}
+    [[ $version != "$(uname -r)" ]] || die "that is the kernel you are running"
+    step "removing $version"
+    sudo rm -rf "/lib/modules/$version" \
+                "/boot/vmlinuz-$version" "/boot/initramfs-$version.img" \
+                "/boot/System.map-$version" "/boot/config-$version" \
+                "/etc/mkinitcpio.d/$version.preset"
+    command -v grub-mkconfig >/dev/null &&
+        sudo grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1
+    ok "removed"
+}
+
+cmd_check() {
+    _require_src
+    cd "$SRC"
+    step "static analysis (sparse)"
+    # C=1 checks files being rebuilt; C=2 checks everything, which takes hours.
+    _make C=1 "${@:-}" 2>&1 | grep -E 'warning|error' | head -40 || ok "nothing reported"
+}
+
+cmd_patches() {
+    _require_src
+    cd "$SRC"
+    case ${1:-help} in
+        get)  b4 am "${2:?usage: delonix-kernel patches get <message-id or lore URL>}" ;;
+        send) git send-email --annotate "${@:2}" ;;
+        prep) b4 prep "${@:2}" ;;
+        *) cat <<EOF
+
+  ${BLD}The kernel patch workflow runs on email, and b4 is what makes that sane.${RST}
+
+    delonix-kernel patches get <lore-url>   fetch a series and apply it
+    delonix-kernel patches prep -n topic    start your own series
+    delonix-kernel patches send *.patch     send it for review
+
+  Read Documentation/process/submitting-patches.rst before the first one.
+  It is not long and it answers most of what reviewers will otherwise ask.
+
+EOF
+        ;;
+    esac
+}
+
+cmd_status() {
+    printf '\n%sKernel%s\n' "$BLD" "$RST"
+    printf '  running   %s\n' "$(uname -r)"
+    printf '  source    %s\n' "$([[ -d $SRC ]] && echo "$SRC" || echo 'not cloned')"
+    if [[ -d $SRC/.git ]]; then
+        printf '  branch    %s\n' "$(git -C "$SRC" describe --tags --always 2>/dev/null)"
+        printf '  config    %s\n' "$([[ -f $SRC/.config ]] && echo present || echo 'not configured')"
+    fi
+    printf '  jobs      %s of %s cores\n' "$JOBS" "$(nproc)"
+    printf '\n%sSelf-built kernels installed%s\n' "$BLD" "$RST"
+    local found=0
+    for k in /boot/vmlinuz-*"$SUFFIX"*; do
+        [[ -e $k ]] || continue
+        printf '  %s\n' "$(basename "$k" | sed 's/^vmlinuz-//')"; found=1
+    done
+    (( found )) || printf '  %snone%s\n' "$DIM" "$RST"
+    printf '\n'
+}
+
+case ${1:-help} in
+    setup)   shift; cmd_setup "$@" ;;
+    config)  shift; cmd_config "$@" ;;
+    build)   shift; cmd_build "$@" ;;
+    boot)    shift; cmd_boot "$@" ;;
+    install) shift; cmd_install "$@" ;;
+    remove)  shift; cmd_remove "$@" ;;
+    check)   shift; cmd_check "$@" ;;
+    patches) shift; cmd_patches "$@" ;;
+    status)  shift; cmd_status "$@" ;;
+    help|--help|-h) sed -n '2,17p' "$0" | sed 's/^# \?//' ;;
+    *) die "unknown command: $1 (try: delonix-kernel help)" ;;
+esac

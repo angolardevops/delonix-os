@@ -397,6 +397,47 @@ tuned-ppd               # fala a API do power-profiles-daemon: o KDE mantém o
 cpupower
 
 ##############################################################################
+# 11c. Contribuir para o kernel Linux
+##############################################################################
+# Compilar o kernel exige um conjunto que não vem com o `base-devel` — e
+# descobrir qual é, um erro de cada vez, é o rito de passagem que esta secção
+# elimina. Ver `delonix-kernel` e docs/*/kernel.md.
+
+## Construir
+bc                      # o Kbuild usa-o para aritmética; falta dele = erro obscuro
+cpio                    # empacotar o initramfs
+flex
+bison
+elfutils                # libelf: obrigatório desde que existe BTF
+pahole                  # gera o BTF — sem ele não há CO-RE nem bpftrace decente
+ncurses                 # `make menuconfig`
+zstd
+
+## Rever e enviar patches (o fluxo do kernel é por e-mail, e continua a ser)
+b4                      # obter, aplicar e responder a séries da lore.kernel.org
+patchutils              # filterdiff, interdiff — comparar duas versões de um patch
+quilt
+perl-authen-sasl        # sem estes três o `git send-email` falha na autenticação
+perl-net-smtp-ssl       # e a mensagem de erro não ajuda ninguém
+perl-mime-tools
+
+## Analisar
+sparse                  # o verificador semântico do próprio kernel (C=1)
+cscope                  # navegar 30 milhões de linhas sem um IDE
+global
+
+## Arrancar e depurar
+virtme-ng               # arranca o kernel que acabaste de compilar numa VM em
+                        # segundos, com o teu /home montado — sem instalar nada
+crash                   # analisar um vmcore
+trace-cmd               # ftrace com interface humana
+bcc                     # ferramentas eBPF prontas (execsnoop, biolatency…)
+
+## Documentação do kernel
+python-sphinx
+python-sphinx_rtd_theme
+
+##############################################################################
 # 12. Linguagens — prontas a construir projectos reais, sem voltas
 ##############################################################################
 # A configuração que as torna úteis está no /etc/skel: linker `mold` e cache

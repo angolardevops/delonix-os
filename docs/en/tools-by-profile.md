@@ -67,6 +67,24 @@ The `rust` package ships instead of `rustup` on purpose: it works **offline**, o
 first boot. Multiple toolchains are one command away —
 `delonix-toolbox install lang-rust-multi`.
 
+### Contributing to the Linux kernel
+
+The set `base-devel` does not bring and that you otherwise discover one cryptic
+error at a time: `bc`, `cpio`, `flex`, `bison`, `elfutils`, `pahole` (BTF),
+`sparse`, `cscope`, `b4`, `patchutils`, and the three Perl modules without which
+`git send-email` fails at authentication.
+
+And the command that removes the ceremony:
+
+```bash
+delonix-kernel setup && delonix-kernel config && delonix-kernel build --install
+delonix-kernel boot     # boots the built kernel in a VM — nothing installed
+```
+
+`install` adds a **separate** GRUB entry: your working kernel is untouched, and
+if the new one does not boot you pick the old one in the same menu. Details in
+[Kernel contribution](kernel.md).
+
 ### Databases — installed, stopped
 
 PostgreSQL, Redis (`valkey`) and MongoDB are installed but **do not start on

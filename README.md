@@ -285,11 +285,14 @@ delonix-os/
 | [`delonixos` CLI](docs/en/cli.md) | [CLI `delonixos`](docs/pt-AO/cli.md) |
 | [`delonix-toolbox`](docs/en/delonix-toolbox.md) | [`delonix-toolbox`](docs/pt-AO/delonix-toolbox.md) |
 | [Filesystem and disk layout](docs/en/filesystems.md) | [Sistema de ficheiros e disco](docs/pt-AO/sistemas-de-ficheiros.md) |
+| [Command reference](docs/en/commands.md) | [Referência de comandos](docs/pt-AO/comandos.md) |
+| [Kernel contribution](docs/en/kernel.md) | [Contribuir para o kernel](docs/pt-AO/kernel.md) |
 | [Design decisions](docs/en/decisions.md) | [Decisões de desenho](docs/pt-AO/decisoes.md) |
 | [Validating a build](docs/en/validation.md) | [Validar um build](docs/pt-AO/validacao.md) |
 | [Roadmap](docs/en/roadmap.md) | [Roteiro](docs/pt-AO/roteiro.md) |
 
-Code comments in this repository are written in Portuguese — that is where the
+All `delonix-*` commands, their options and their output are in **English**, so
+the distro is usable by anyone. Code comments in this repository are written in Portuguese — that is where the
 reasoning lives, and it is kept in the language the work was done in.
 
 ---

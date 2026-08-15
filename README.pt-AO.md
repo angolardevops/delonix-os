@@ -291,6 +291,8 @@ delonix-os/
 | [CLI `delonixos`](docs/pt-AO/cli.md) | [`delonixos` CLI](docs/en/cli.md) |
 | [`delonix-toolbox`](docs/pt-AO/delonix-toolbox.md) | [`delonix-toolbox`](docs/en/delonix-toolbox.md) |
 | [Sistema de ficheiros e disco](docs/pt-AO/sistemas-de-ficheiros.md) | [Filesystem and disk layout](docs/en/filesystems.md) |
+| [Referência de comandos](docs/pt-AO/comandos.md) | [Command reference](docs/en/commands.md) |
+| [Contribuir para o kernel](docs/pt-AO/kernel.md) | [Kernel contribution](docs/en/kernel.md) |
 | [Decisões de desenho](docs/pt-AO/decisoes.md) | [Design decisions](docs/en/decisions.md) |
 | [Validar um build](docs/pt-AO/validacao.md) | [Validating a build](docs/en/validation.md) |
 | [Roteiro](docs/pt-AO/roteiro.md) | [Roadmap](docs/en/roadmap.md) |

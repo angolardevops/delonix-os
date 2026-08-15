@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# DelonixOS — diagnóstico do posto de trabalho.
+# delonix-doctor — is this workstation actually ready?
 #
-# Responde a uma pergunta só: "esta máquina está pronta para correr containers
-# rootless, clusters locais e ferramentas de plataforma?"
-# Sai com 0 se tudo passou, 1 se houver falhas (dá para usar em CI de imagem).
+# Answers one question: can this machine run rootless containers, local clusters
+# and platform tooling? Exits 0 if everything passed, 1 if anything failed — so
+# it works as a gate in image CI, not just as something you read.
 set -uo pipefail
 
 RED=$'\e[31m'; GRN=$'\e[32m'; YLW=$'\e[33m'; DIM=$'\e[2m'; RST=$'\e[0m'
@@ -16,86 +16,86 @@ warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$1"; ((warns++)); }
 
 check_sysctl() {
     local key=$1 min=$2 actual
-    actual=$(sysctl -n "$key" 2>/dev/null) || { warn "$key não existe neste kernel"; return; }
-    if (( actual >= min )); then ok "$key = $actual"; else bad "$key = $actual (esperado >= $min)"; fi
+    actual=$(sysctl -n "$key" 2>/dev/null) || { warn "$key does not exist on this kernel"; return; }
+    if (( actual >= min )); then ok "$key = $actual"; else bad "$key = $actual (expected >= $min)"; fi
 }
 
-section "Identidade"
+section "Identity"
 printf '  %s\n' "$(grep -m1 PRETTY_NAME /etc/os-release | cut -d'"' -f2)"
 printf '  kernel %s · %s\n' "$(uname -r)" "$(uname -m)"
 [[ -r /etc/delonix-release ]] && printf '  %s\n' "$(cat /etc/delonix-release)"
 
-section "Containers rootless"
+section "Rootless containers"
 if [[ $(stat -fc %T /sys/fs/cgroup 2>/dev/null) == cgroup2fs ]]; then
-    ok "cgroup v2 unificado"
+    ok "unified cgroup v2"
 else
-    bad "cgroup v2 em falta (o rootless com limites não funciona)"
+    bad "no cgroup v2 — rootless with resource limits will not work"
 fi
 
 controllers=$(cat "/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers" 2>/dev/null || echo "")
 for c in cpu memory pids io; do
-    if [[ " $controllers " == *" $c "* ]]; then ok "controlador delegado: $c"
-    else bad "controlador NÃO delegado: $c (ver /etc/systemd/system/user@.service.d/)"; fi
+    if [[ " $controllers " == *" $c "* ]]; then ok "delegated controller: $c"
+    else bad "controller NOT delegated: $c (see /etc/systemd/system/user@.service.d/)"; fi
 done
 
 if grep -q "^$(id -un):" /etc/subuid && grep -q "^$(id -un):" /etc/subgid; then
     ok "subuid/subgid: $(grep -m1 "^$(id -un):" /etc/subuid)"
 else
-    bad "sem intervalo subuid/subgid (corre: sudo /usr/lib/delonix/firstboot)"
+    bad "no subuid/subgid range (run: sudo /usr/lib/delonix/firstboot)"
 fi
 
 check_sysctl user.max_user_namespaces 1000
-command -v newuidmap >/dev/null && ok "newuidmap presente" || bad "newuidmap em falta (pacote shadow)"
-[[ -e /dev/fuse ]] && ok "/dev/fuse disponível (fuse-overlayfs)" || warn "/dev/fuse em falta"
+command -v newuidmap >/dev/null && ok "newuidmap present" || bad "newuidmap missing (package: shadow)"
+[[ -e /dev/fuse ]] && ok "/dev/fuse available (fuse-overlayfs)" || warn "/dev/fuse missing"
 
-section "Limites do kernel"
+section "Kernel limits"
 check_sysctl fs.inotify.max_user_instances 4096
 check_sysctl fs.inotify.max_user_watches 262144
 check_sysctl vm.max_map_count 262144
 nofile=$(ulimit -n)
-(( nofile >= 65536 )) && ok "ulimit -n = $nofile" || bad "ulimit -n = $nofile (esperado >= 65536)"
+(( nofile >= 65536 )) && ok "ulimit -n = $nofile" || bad "ulimit -n = $nofile (expected >= 65536)"
 
-section "Virtualização"
+section "Virtualization"
 if [[ -e /dev/kvm ]]; then
-    if [[ -r /dev/kvm && -w /dev/kvm ]]; then ok "/dev/kvm acessível"
-    else bad "/dev/kvm existe mas sem permissão (falta estar no grupo kvm?)"; fi
+    if [[ -r /dev/kvm && -w /dev/kvm ]]; then ok "/dev/kvm accessible"
+    else bad "/dev/kvm exists but is not accessible (not in the kvm group?)"; fi
 else
-    warn "/dev/kvm ausente — microVMs e DKS local não arrancam (VT-x/AMD-V na BIOS?)"
+    warn "/dev/kvm absent — microVMs and local DKS will not start (VT-x/AMD-V in BIOS?)"
 fi
 
 nested=$(cat /sys/module/kvm_intel/parameters/nested 2>/dev/null ||
          cat /sys/module/kvm_amd/parameters/nested 2>/dev/null || echo "")
 case $nested in
-    Y|1) ok "virtualização aninhada activa (labs dentro de VMs)" ;;
-    "")  warn "módulo kvm_intel/kvm_amd não carregado" ;;
-    *)   bad "nested=$nested — labs dentro de VMs vão correr em emulação" ;;
+    Y|1) ok "nested virtualization on (labs inside VMs)" ;;
+    "")  warn "kvm_intel/kvm_amd module not loaded" ;;
+    *)   bad "nested=$nested — labs inside VMs will run emulated" ;;
 esac
 
-id -nG | grep -qw libvirt && ok "no grupo libvirt" || bad "fora do grupo libvirt (VMs pedem sudo)"
+id -nG | grep -qw libvirt && ok "in the libvirt group" || bad "not in the libvirt group (VMs will ask for sudo)"
 if systemctl is-active --quiet libvirtd.socket || systemctl is-active --quiet libvirtd; then
-    ok "libvirt disponível"
+    ok "libvirt available"
     if virsh --connect qemu:///system net-info default 2>/dev/null | grep -q 'Active:.*yes'; then
-        ok "rede libvirt 'default' activa"
+        ok "libvirt 'default' network active"
     else
-        warn "rede libvirt 'default' inactiva (virsh net-start default)"
+        warn "libvirt 'default' network inactive (virsh net-start default)"
     fi
 else
-    bad "libvirt não está a correr (systemctl enable --now libvirtd.socket)"
+    bad "libvirt is not running (systemctl enable --now libvirtd.socket)"
 fi
-command -v cloud-hypervisor >/dev/null && ok "cloud-hypervisor presente" ||
-    warn "cloud-hypervisor em falta (delonix-toolbox install virt-extra)"
+command -v cloud-hypervisor >/dev/null && ok "cloud-hypervisor present" ||
+    warn "cloud-hypervisor missing (delonix-toolbox install virt-extra)"
 
 # O daemon do docker deve estar DESLIGADO: o CLI fala com o podman rootless.
 if systemctl is-active --quiet docker; then
-    warn "dockerd está a correr — nesta distro o CLI aponta ao podman rootless"
+    warn "dockerd is running — on this distro the CLI points at rootless podman"
 else
     if command -v docker >/dev/null; then
-        if docker info &>/dev/null; then ok "docker CLI a falar com o podman rootless"
-        else warn "docker CLI sem backend (arranca: systemctl --user start podman.socket)"; fi
+        if docker info &>/dev/null; then ok "docker CLI talking to rootless podman"
+        else warn "docker CLI has no backend (start: systemctl --user start podman.socket)"; fi
     fi
 fi
 
-section "Ferramentas"
+section "Tools"
 missing=()
 for t in kubectl helm k9s kubectx tofu ansible podman buildah skopeo git jq yq \
          age sops trivy cosign nvim rg fd starship zsh tmux docker \
@@ -104,128 +104,128 @@ for t in kubectl helm k9s kubectx tofu ansible podman buildah skopeo git jq yq \
          clang gdb golangci-lint mypy buf hyperfine cargo-nextest; do
     command -v "$t" >/dev/null || missing+=("$t")
 done
-(( ${#missing[@]} == 0 )) && ok "kit base completo" || bad "em falta: ${missing[*]}"
+(( ${#missing[@]} == 0 )) && ok "base toolkit complete" || bad "missing: ${missing[*]}"
 
 for t in delonix delonixctl claude antigravity resolve; do
     if command -v "$t" >/dev/null; then
         ok "$t $("$t" --version 2>/dev/null | head -1)"
     else
-        warn "$t não instalado (corre: delonix-toolbox install delonix|ai)"
+        warn "$t not installed (run: delonix-toolbox install delonix|ai)"
     fi
 done
 
-if [[ -n ${TMUX:-} ]]; then ok "sessão dentro do tmux"
-else warn "fora do tmux (DELONIX_NO_TMUX activo, ou terminal não interactivo)"; fi
+if [[ -n ${TMUX:-} ]]; then ok "session inside tmux"
+else warn "outside tmux (DELONIX_NO_TMUX set, or a non-interactive terminal)"; fi
 
-section "Aceleração (GPU / NPU / vídeo)"
+section "Acceleration (GPU / NPU / video)"
 if command -v clinfo >/dev/null; then
     platforms=$(clinfo -l 2>/dev/null | grep -c 'Platform #' || echo 0)
-    (( platforms > 0 )) && ok "OpenCL: $platforms plataforma(s)" ||
-        warn "OpenCL sem plataformas (GPU sem driver de compute?)"
+    (( platforms > 0 )) && ok "OpenCL: $platforms platform(s)" ||
+        warn "OpenCL reports no platforms (GPU without a compute driver?)"
 fi
-[[ -e /dev/dri/renderD128 ]] && ok "render node presente (VA-API, compute)" ||
-    warn "sem /dev/dri/renderD128 — vídeo e compute vão pela CPU"
+[[ -e /dev/dri/renderD128 ]] && ok "render node present (VA-API, compute)" ||
+    warn "no /dev/dri/renderD128 — video and compute will fall back to the CPU"
 if compgen -G "/dev/accel/accel*" >/dev/null; then
-    ok "NPU visível"
+    ok "NPU visible"
 else
-    warn "sem NPU (normal fora dos Core Ultra / Ryzen AI)"
+    warn "no NPU (normal outside Core Ultra / Ryzen AI)"
 fi
 
-section "Afinação de I/O e rede"
+section "I/O and network tuning"
 for dev in /sys/block/nvme*n*/queue/scheduler /sys/block/sd*/queue/scheduler; do
     [[ -r $dev ]] || continue
     disk=$(basename "$(dirname "$(dirname "$dev")")")
     sched=$(grep -oP '\[\K[^]]+' "$dev" 2>/dev/null)
     case $disk:$sched in
-        nvme*:none|sd*:mq-deadline|sd*:bfq) ok "$disk usa $sched" ;;
-        *) warn "$disk usa $sched (esperado none/mq-deadline/bfq — ver udev)" ;;
+        nvme*:none|sd*:mq-deadline|sd*:bfq) ok "$disk uses $sched" ;;
+        *) warn "$disk uses $sched (expected none/mq-deadline/bfq — see the udev rules)" ;;
     esac
 done
 qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
 cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-[[ $cc == bbr && $qdisc == fq ]] && ok "rede: $cc + $qdisc" ||
-    warn "rede: ${cc:-?} + ${qdisc:-?} (o BBR sem fq perde o pacing)"
-systemctl is-active --quiet ananicy-cpp && ok "ananicy-cpp a dar prioridade ao foco" ||
-    warn "ananicy-cpp parado"
-systemctl is-active --quiet systemd-oomd && ok "systemd-oomd a vigiar a pressão (PSI)" ||
-    warn "systemd-oomd parado — sobra o earlyoom, que só vê memória livre"
+[[ $cc == bbr && $qdisc == fq ]] && ok "network: $cc + $qdisc" ||
+    warn "network: ${cc:-?} + ${qdisc:-?} (BBR without fq loses its pacing)"
+systemctl is-active --quiet ananicy-cpp && ok "ananicy-cpp prioritising the foreground" ||
+    warn "ananicy-cpp not running"
+systemctl is-active --quiet systemd-oomd && ok "systemd-oomd watching pressure (PSI)" ||
+    warn "systemd-oomd not running — only earlyoom is left, and it only sees free memory"
 acct=$(systemctl show -p DefaultMemoryAccounting --value 2>/dev/null)
-[[ $acct == yes ]] && ok "contabilidade de memória ligada (sem isto os limites não valem)" ||
-    bad "contabilidade de memória desligada — CPUWeight/MemoryHigh não têm efeito"
-peso=$(systemctl show user.slice -p CPUWeight --value 2>/dev/null)
-[[ ${peso:-100} -gt 100 ]] && ok "user.slice com prioridade sobre o sistema (CPUWeight=$peso)" ||
-    warn "user.slice sem prioridade (CPUWeight=${peso:-?})"
+[[ $acct == yes ]] && ok "memory accounting on (without it the limits mean nothing)" ||
+    bad "memory accounting off — CPUWeight/MemoryHigh have no effect"
+weight=$(systemctl show user.slice -p CPUWeight --value 2>/dev/null)
+[[ ${weight:-100} -gt 100 ]] && ok "user.slice prioritised over the system (CPUWeight=$weight)" ||
+    warn "user.slice not prioritised (CPUWeight=${weight:-?})"
 
 section "Desktop"
 if [[ ${XDG_SESSION_TYPE:-} == wayland ]]; then
-    command -v wl-copy >/dev/null && ok "área de transferência (wl-clipboard)" ||
-        bad "sem wl-clipboard — `| wl-copy` não funciona nesta sessão Wayland"
+    command -v wl-copy >/dev/null && ok "clipboard (wl-clipboard)" ||
+        bad "no wl-clipboard — `| wl-copy` will not work in this Wayland session"
 else
-    command -v xclip >/dev/null && ok "área de transferência (xclip)" || warn "sem xclip"
+    command -v xclip >/dev/null && ok "clipboard (xclip)" || warn "no xclip"
 fi
 anim=$(kreadconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 2>/dev/null)
-[[ $anim == 0 ]] && ok "animações desligadas (eyecandy on para repor)" ||
-    warn "animações a ${anim:-?} — custa GPU e latência"
+[[ $anim == 0 ]] && ok "animations off (eyecandy on to restore)" ||
+    warn "animations at ${anim:-?} — costs GPU and latency"
 
-section "Laboratórios"
+section "Labs"
 if command -v podman >/dev/null; then
     labs=$(podman pod ps --filter "name=delonix-" --format "{{.Name}}" 2>/dev/null | tr '\n' ' ')
-    [[ -n ${labs// /} ]] && warn "a correr: $labs (consome RAM; delonix-toolbox lab down)" ||
-        printf '  %s·%s nenhum a correr (delonix-toolbox lab list)\n' "$DIM" "$RST"
+    [[ -n ${labs// /} ]] && warn "running: $labs (uses RAM; delonix-toolbox lab down)" ||
+        printf '  %s·%s none running (delonix-toolbox lab list)\n' "$DIM" "$RST"
 fi
 
-section "Bases de dados (paradas até serem precisas)"
+section "Databases (stopped until needed)"
 for u in postgresql valkey mongodb; do
     st=$(systemctl is-active "$u" 2>/dev/null)
     if [[ $st == active ]]; then
-        warn "$u a correr (consome RAM; delonix-toolbox db stop ${u/postgresql/postgres})"
+        warn "$u running (uses RAM; delonix-toolbox db stop ${u/postgresql/postgres})"
     else
-        printf '  %s·%s %-12s parada\n' "$DIM" "$RST" "$u"
+        printf '  %s·%s %-12s stopped\n' "$DIM" "$RST" "$u"
     fi
 done
 
-section "Sistema de ficheiros"
-raiz=$(findmnt -no FSTYPE / 2>/dev/null)
-case $raiz in
+section "Filesystem"
+root_fs=$(findmnt -no FSTYPE / 2>/dev/null)
+case $root_fs in
     btrfs)
-        ok "raiz em btrfs"
-        findmnt -no OPTIONS / | grep -q compress && ok "compressão activa" ||
-            warn "sem compressão — `compress=zstd:1` lê menos bytes, não só poupa espaço"
+        ok "root on btrfs"
+        findmnt -no OPTIONS / | grep -q compress && ok "compression active" ||
+            warn "no compression — `compress=zstd:1` reads fewer bytes, not just saves space"
         command -v snapper >/dev/null && snapper -c root list >/dev/null 2>&1 &&
-            ok "snapper configurado ($(snapper -c root list 2>/dev/null | tail -n +3 | wc -l) instantâneos)" ||
-            warn "snapper sem configuração — as actualizações não estão a ser protegidas"
+            ok "snapper configured ($(snapper -c root list 2>/dev/null | tail -n +3 | wc -l) snapshots)" ||
+            warn "snapper not configured — upgrades are not being protected"
         if [[ -d /var/lib/libvirt/images ]]; then
             lsattr -d /var/lib/libvirt/images 2>/dev/null | grep -q C &&
-                ok "imagens de VM sem copy-on-write" ||
-                warn "imagens de VM com CoW — vão fragmentar (ver docs/sistemas-de-ficheiros)"
+                ok "VM images with copy-on-write disabled" ||
+                warn "VM images with CoW — they will fragment (see docs/en/filesystems.md)"
         fi
         ;;
-    ext4|xfs) ok "raiz em $raiz (sem instantâneos: as actualizações não têm rede)" ;;
-    *) warn "raiz em ${raiz:-?}" ;;
+    ext4|xfs) ok "root on $root_fs (no snapshots: upgrades have no safety net)" ;;
+    *) warn "root on ${root_fs:-?}" ;;
 esac
 
-section "Idioma"
+section "Language"
 lang=$(. /etc/locale.conf 2>/dev/null; echo "${LANG:-}")
 case $lang in
-    pt_AO*) ok "pt_AO — convenções de Angola (Kz, +244)" ;;
-    pt_PT*) warn "pt_PT — o pt_AO não foi gerado (corre: sudo /usr/lib/delonix/gerar-locale)" ;;
-    *)      warn "LANG=${lang:-não definido}" ;;
+    pt_AO*) ok "pt_AO — Angolan conventions (Kz, +244)" ;;
+    pt_PT*) warn "pt_PT — pt_AO was not generated (run: sudo /usr/lib/delonix/generate-locale)" ;;
+    *)      warn "LANG=${lang:-unset}" ;;
 esac
 
-section "Rede"
+section "Network"
 ip -br link | awk '{printf "  %-14s %s\n", $1, $2}'
 if command -v resolvectl >/dev/null; then
     printf '  DNS: %s\n' "$(resolvectl status 2>/dev/null | awk '/DNS Servers/{print $3; exit}')"
 fi
 
-section "Armazenamento"
+section "Storage"
 df -h / /home 2>/dev/null | awk 'NR==1 || /\//{printf "  %s\n", $0}' | head -4
 swapon --show=NAME,TYPE,SIZE,USED --noheadings 2>/dev/null | sed 's/^/  swap: /'
 
 printf '\n'
 if (( fails == 0 )); then
-    printf '%s✓ tudo pronto%s (%d avisos)\n' "$GRN" "$RST" "$warns"
+    printf '%s✓ ready%s (%d warnings)\n' "$GRN" "$RST" "$warns"
     exit 0
 fi
-printf '%s✗ %d verificações falharam%s (%d avisos)\n' "$RED" "$fails" "$RST" "$warns"
+printf '%s✗ %d checks failed%s (%d warnings)\n' "$RED" "$fails" "$RST" "$warns"
 exit 1

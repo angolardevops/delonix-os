@@ -60,8 +60,19 @@ grep -q '^# removido por .*: firefox' "$PROFILE/Packages-Desktop" &&
     ok "overlay do utilizador sobrepõe-se ao do perfil base" || bad "overlay não aplicado"
 [[ -f $PROFILE/desktop-overlay/etc/skel/.zshrc ]] &&
     ok "perfil base foi herdado" || bad "perfil base não foi copiado"
-[[ -L $PROFILE/desktop-overlay/etc/skel/.config/systemd/user/sockets.target.wants/podman.socket ]] &&
-    ok "links simbólicos preservados (não seguidos)" || bad "symlink do skel partido"
+# Os overlays deixaram de ter links (o `buildiso` segue-os e morre). Mas o
+# render TEM de continuar a preservar links que o UTILIZADOR ponha no overlay
+# dele — por isso o teste cria um, em vez de depender do conteúdo do skel.
+ln -sfn /nao/existe/em/lado/nenhum "$TMP/proj/overlays/etc/link-de-teste" 2>/dev/null
+(cd "$TMP/proj" && "$CLI" render >/dev/null 2>&1)
+if [[ -L $PROFILE/desktop-overlay/etc/link-de-teste ]]; then
+    ok "link do utilizador preservado (copiado como link, não seguido)"
+else
+    bad "link do utilizador não sobreviveu ao render"
+fi
+[[ -z $(find "$REPO_DIR/iso-profiles" -type l 2>/dev/null) ]] &&
+    ok "o perfil oficial não tem links (o buildiso segue-os)" ||
+    bad "há links no perfil oficial — o buildiso vai falhar"
 
 echo "== leitor YAML de recurso (sem PyYAML) =="
 python3 - "$TMP/proj/delonixos.yaml" "$CLI" <<'PY'

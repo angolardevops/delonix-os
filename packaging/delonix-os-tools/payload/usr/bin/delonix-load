@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# delonix-load — run heavy work without losing the machine.
+#
+#   delonix-load cargo build --release
+#   delonix-load -- make -j32
+#   delonix-load --cpu 30 --mem 50% podman build .
+#   delonix-load --status           what is running contained, and what it costs
+#
+# `ananicy-cpp` already lowers compiler priority automatically. This is the next
+# step, for when that is not enough: it puts the command in its own cgroup with
+# reduced CPU and I/O weight and a memory ceiling, through
+# `systemd-run --user --scope`.
+#
+# The practical difference: with nice alone, a 32-thread build can still fill
+# memory and the disk queue. With a cgroup it cannot — and the desktop never
+# stutters. The build gets a few percent slower; you keep working, which is the
+# trade you wanted.
+set -euo pipefail
+
+RED=$'\e[31m'; GRN=$'\e[32m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
+die() { printf '%s✗%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
+
+CPU=20          # relative weight (the system default is 100)
+IO=20
+MEM=70%         # soft ceiling: above this the kernel reclaims from this cgroup
+NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --cpu)   CPU=$2; shift 2 ;;
+        --io)    IO=$2; shift 2 ;;
+        --mem)   MEM=$2; shift 2 ;;
+        --name)  NAME=$2; shift 2 ;;
+        --status)
+            printf '\n%sContained work running%s\n\n' "$BLD" "$RST"
+            systemd-cgls --user-unit -l 2>/dev/null | grep -A3 'delonix-load' ||
+                printf '  %snothing — the machine is idle%s\n' "$DIM" "$RST"
+            printf '\n'
+            systemctl --user list-units 'delonix-load-*' --no-legend 2>/dev/null |
+                awk '{print "  " $1 "  " $4}' || true
+            printf '\n'
+            exit 0 ;;
+        --help|-h) sed -n '2,18p' "$0" | sed 's/^# \?//'; exit 0 ;;
+        --) shift; break ;;
+        -*) die "unknown option: $1" ;;
+        *) break ;;
+    esac
+done
+
+(( $# )) || die "tell me what to run: delonix-load cargo build --release"
+command -v systemd-run >/dev/null || die "systemd-run is required"
+
+NAME=${NAME:-$(basename "$1")}
+UNIT="delonix-load-${NAME}-$$"
+
+# Without a delegated cgroup this has no effect at all — better to say so
+# than to pretend it protected anything.
+CTRL=/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
+if [[ -r $CTRL ]] && ! grep -q memory "$CTRL"; then
+    printf '%s!%s sem controlador de memória delegado — o limite não será aplicado\n' \
+        "$RED" "$RST" >&2
+    printf '  %srun `delonix-doctor` to see why%s\n' "$DIM" "$RST" >&2
+fi
+
+printf '%s→%s contido: CPUWeight=%s IOWeight=%s MemoryHigh=%s\n' \
+    "$BLD" "$RST" "$CPU" "$IO" "$MEM"
+
+exec systemd-run --user --scope --quiet \
+    --unit="$UNIT" \
+    --property=CPUWeight="$CPU" \
+    --property=IOWeight="$IO" \
+    --property=MemoryHigh="$MEM" \
+    --property=ManagedOOMMemoryPressure=kill \
+    -- "$@"

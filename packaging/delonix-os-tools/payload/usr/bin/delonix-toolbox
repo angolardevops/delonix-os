@@ -1,47 +1,45 @@
 #!/usr/bin/env bash
-# DelonixOS — instalador de perfis opcionais.
-#
-# A ISO já traz tudo o que é preciso para trabalhar: k8s, IaC, containers
-# rootless, KVM/libvirt, AWS/GCP, Rust/Go/Python/Node, PostgreSQL/Redis/Mongo,
-# browsers e Claude Code. O que fica aqui são os casos específicos — Java, GPU
-# de fabricante, extras de cloud — e os interruptores do sistema.
+# delonix-toolbox — the control panel of DelonixOS.
 #
 #   delonix-toolbox list
 #   delonix-toolbox install k8s-extra lang-java
 #   delonix-toolbox remove lang-java
-#   delonix-toolbox db start postgres redis mongo   (vêm instaladas mas paradas)
-#   delonix-toolbox lab up observability            (Grafana+Prometheus+Loki locais)
-#   delonix update                                  (sistema + Delonix Runtime)
-#   delonix-toolbox install davinci                 (DaVinci Resolve, guiado)
-#   delonix-toolbox eyecandy on|off                 (animações do desktop)
+#   delonix-toolbox db start postgres redis mongo   (databases ship stopped)
+#   delonix-toolbox lab up observability            (Grafana+Prometheus+Loki)
+#   delonix-toolbox eyecandy on|off                 (desktop animations)
 #   delonix-toolbox unprivileged-ports on|off
+#   delonix update                                  (system + Delonix Runtime)
+#
+# The ISO ships what 90% of people use. What lives here are the specific cases —
+# Java, vendor GPU stacks, cloud extras — and the switches for decisions that
+# were deliberately left open.
 set -euo pipefail
 
 RED=$'\e[31m'; GRN=$'\e[32m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
 
 # --- catálogo: perfil -> descrição | pacotes ---------------------------------
 declare -A DESC=(
-    [lang-rust-multi]="rustup: várias toolchains de Rust por projecto"
+    [lang-rust-multi]="rustup: multiple Rust toolchains per project"
     [lang-node-extra]="yarn + deno + bun"
     [lang-java]="OpenJDK 21 + Maven + Gradle"
-    [lang-python-data]="Python científico e de dados"
-    [cloud-azure]="Azure CLI (AWS e GCP já vêm na ISO)"
+    [lang-python-data]="scientific and data Python"
+    [cloud-azure]="Azure CLI (AWS and GCP already ship)"
     [k8s-extra]="flux, kubeseal, velero, popeye, kubent"
-    [observability]="Grafana Alloy, promtool, k6, vector"
-    [ide-extra]="VS Code, DBeaver, Postman (o IDE da casa é o antigravity)"
+    [observability]="k6, vector, prometheus binaries"
+    [ide-extra]="VS Code, DBeaver, Postman (the house IDE is antigravity)"
     [virt-extra]="firecracker, vagrant, kubevirt CLI"
-    [gpu-amd]="ROCm/OpenCL para GPU AMD (~2 GB)"
-    [gpu-nvidia]="CUDA + OpenCL para GPU NVIDIA (~3 GB)"
-    [printing]="CUPS + drivers (fora da ISO por peso)"
-    [office]="LibreOffice + Thunderbird (para quem precisa mesmo)"
-    [delonix]="Delonix Runtime + delonixctl (motor da casa)"
-    [ai]="Claude Code + Antigravity (reinstalar/actualizar)"
-    [ai-local]="Ollama: modelos locais na GPU/NPU já activadas"
-    [docs]="Hugo e Zola: portais e sites estáticos (o mkdocs já vem)"
-    [davinci]="DaVinci Resolve (o download exige registo na Blackmagic)"
-    [zfs]="ZFS (módulo fora do kernel — lê o aviso antes)"
-    [legendas]="whisper.cpp + Aegisub: transcrever e legendar na GPU/NPU local"
-    [security-audit]="rkhunter + clamav: varredura periódica do posto"
+    [gpu-amd]="ROCm/OpenCL for AMD GPUs (~2 GB)"
+    [gpu-nvidia]="CUDA + OpenCL for NVIDIA GPUs (~3 GB)"
+    [printing]="CUPS + drivers (kept off the image on purpose)"
+    [office]="LibreOffice + Thunderbird (for those who really need them)"
+    [delonix]="Delonix Runtime + delonixctl (the house engine)"
+    [ai]="Claude Code + Antigravity (reinstall/update)"
+    [ai-local]="Ollama: local models on the GPU/NPU already enabled"
+    [docs]="Hugo and Zola: static sites (mkdocs already ships)"
+    [davinci]="DaVinci Resolve (the download needs a Blackmagic account)"
+    [zfs]="ZFS (out-of-tree module — read the warning first)"
+    [subtitles]="whisper.cpp + Aegisub: transcribe and caption on the local GPU/NPU"
+    [security-audit]="rkhunter + clamav: periodic workstation scan"
 )
 
 declare -A PKGS=(
@@ -64,7 +62,7 @@ declare -A PKGS=(
     [docs]="hugo zola"
     [davinci]="__davinci__"
     [zfs]="zfs-dkms zfs-utils"
-    [legendas]="whisper.cpp-bin aegisub"
+    [subtitles]="whisper.cpp-bin aegisub"
     [security-audit]="rkhunter clamav"
 )
 
@@ -88,20 +86,20 @@ install_delonix() {
     local instalador="https://raw.githubusercontent.com/$repo/main/install.sh"
 
     if curl -fsSL --max-time 20 -o /dev/null -w '%{http_code}' "$instalador" 2>/dev/null | grep -q 200; then
-        info "a instalar o Delonix Runtime pelo instalador oficial"
-        curl -fsSL "$instalador" | sudo sh && { done_ "Delonix Runtime instalado"; return 0; }
-        warn "o instalador oficial falhou — a tentar os binários directamente"
+        info "installing the Delonix Runtime with its official installer"
+        curl -fsSL "$instalador" | sudo sh && { done_ "Delonix Runtime installed"; return 0; }
+        warn "the official installer failed — falling back to the raw binaries"
     fi
 
-    info "a instalar Delonix Runtime + delonixctl a partir dos releases"
+    info "installing Delonix Runtime + delonixctl from the published releases"
     local tmp; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
     local base="https://github.com/$repo/releases/latest/download"
     for bin in delonix delonixctl; do
         if curl -fsSL "$base/${bin}-x86_64-unknown-linux-gnu" -o "$tmp/$bin"; then
             sudo install -Dm755 "$tmp/$bin" "/usr/local/bin/$bin"
-            done_ "$bin instalado"
+            done_ "$bin installed"
         else
-            printf '%s!%s não consegui descarregar %s\n' "$RED" "$RST" "$bin"
+            printf '%s!%s could not download %s\n' "$RED" "$RST" "$bin"
         fi
     done
 }
@@ -118,17 +116,17 @@ install_davinci() {
     if [[ -z $zip ]]; then
         cat <<EOF
 
-  ${BLD}O DaVinci Resolve precisa de um passo manual${RST}
+  ${BLD}DaVinci Resolve needs one manual step${RST}
 
-  O instalador está atrás de um formulário de registo da Blackmagic e não pode
-  ser descarregado por script — não é uma limitação nossa.
+  The installer sits behind a Blackmagic registration form and cannot be
+  downloaded by a script — that is their limitation, not ours.
 
-    1. abre  https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion
-    2. escolhe "DaVinci Resolve for Linux" (a versão gratuita chega)
-    3. guarda o .zip em ~/Downloads
-    4. corre outra vez:  delonix-toolbox install davinci
+    1. open  https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion
+    2. pick "DaVinci Resolve for Linux" (the free version is enough)
+    3. save the .zip in ~/Downloads
+    4. run again:  delonix-toolbox install davinci
 
-  ${DIM}Com o ficheiro no sítio, o resto é automático.${RST}
+  ${DIM}With the file in place, everything else is automatic.${RST}
 
 EOF
         command -v xdg-open >/dev/null &&
@@ -136,65 +134,65 @@ EOF
         return 1
     fi
 
-    info "encontrado: $(basename "$zip")"
-    command -v git >/dev/null || die "preciso do git"
+    info "found: $(basename "$zip")"
+    command -v git >/dev/null || die "git is required"
     local tmp; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
     git clone -q https://aur.archlinux.org/davinci-resolve.git "$tmp/davinci-resolve" ||
-        die "não consegui obter o PKGBUILD"
+        die "could not fetch the PKGBUILD"
     cp "$zip" "$tmp/davinci-resolve/"
-    info "a compilar (demora — são vários GB a extrair)"
-    ( cd "$tmp/davinci-resolve" && makepkg -si --noconfirm ) || die "a compilação falhou"
-    done_ "DaVinci Resolve instalado"
+    info "building (this takes a while — several GB to extract)"
+    ( cd "$tmp/davinci-resolve" && makepkg -si --noconfirm ) || die "the build failed"
+    done_ "DaVinci Resolve installed"
 
     cat <<EOF
 
-  ${BLD}Antes da primeira edição${RST}
+  ${BLD}Before your first edit${RST}
 
-  A versão gratuita do Resolve para Linux ${BLD}não lê H.264/H.265${RST}: as gravações
-  do OBS não importam directamente. Converte-as primeiro —
+  The free version of Resolve for Linux ${BLD}cannot read H.264/H.265${RST}: OBS
+  recordings will not import directly. Convert them first —
 
-      delonix-video para-davinci ~/Vídeos/DelonixOS/aula.mkv
+      delonix-video to-davinci ~/Videos/DelonixOS/lesson.mkv
 
-  E precisa de GPU com OpenCL/CUDA. Com NVIDIA:  delonix-toolbox install gpu-nvidia
+  It also needs a GPU with OpenCL/CUDA. On NVIDIA:  delonix-toolbox install gpu-nvidia
 
 EOF
 }
 
 cmd_list() {
-    printf '%sPerfis disponíveis%s\n\n' "$BLD" "$RST"
+    printf '%sAvailable profiles%s\n\n' "$BLD" "$RST"
     for k in $(printf '%s\n' "${!DESC[@]}" | sort); do
         local mark=" "
         [[ ${PKGS[$k]} != "__delonix__" ]] &&
             pacman -Qq ${PKGS[$k]%% *} &>/dev/null && mark="✓"
         printf '  %s %-16s %s%s%s\n' "$mark" "$k" "$DIM" "${DESC[$k]}" "$RST"
     done
-    printf '\n%s(✓ = pelo menos o pacote principal já está instalado)%s\n' "$DIM" "$RST"
+    printf '\n%s(✓ = the main package is already installed)%s\n' "$DIM" "$RST"
 }
 
 cmd_install() {
-    (( $# )) || die "diz-me que perfis: $(printf '%s ' "${!DESC[@]}")"
+    (( $# )) || die "which profiles? $(printf '%s ' "${!DESC[@]}")"
     local h; h=$(helper)
     for profile in "$@"; do
-        [[ -v PKGS[$profile] ]] || die "perfil desconhecido: $profile"
+        [[ -v PKGS[$profile] ]] || die "unknown profile: $profile"
         if [[ ${PKGS[$profile]} == "__delonix__" ]]; then install_delonix; continue; fi
         if [[ ${PKGS[$profile]} == "__davinci__" ]]; then install_davinci; continue; fi
         if [[ $profile == zfs ]]; then
             cat <<EOF
 
-  ${BLD}Antes de instalar o ZFS, o que isto significa numa distro rolling${RST}
+  ${BLD}What installing ZFS means on a rolling distro${RST}
 
-  O módulo do ZFS vive FORA do kernel (a licença impede que venha lá dentro).
-  Cada actualização de kernel obriga a recompilá-lo, e se isso falhar — porque o
-  ZFS ainda não suporta esse kernel — a máquina arranca sem os teus pools.
+  The ZFS module lives OUTSIDE the kernel (its licence keeps it out). Every
+  kernel upgrade has to rebuild it, and if that fails — because ZFS does not
+  support that kernel yet — the machine boots without your pools.
 
-  Faz sentido: um disco de dados separado, ou um servidor com kernel fixo.
-  Não faz: a raiz de um posto que actualiza todas as semanas.
+  It makes sense for: a separate data disk, or a server with a pinned kernel.
+  It does not for: the root of a workstation that updates every week.
 
-  Se avançares, mantém o \`linux-lts\` instalado como kernel de recurso.
+  If you go ahead, keep \`linux-lts\` installed as a fallback kernel.
 
 EOF
-            read -rp "  Continuar? [s/N] " r
-            [[ ${r,,} == s ]] || { info "cancelado"; continue; }
+            read -rp "  Continue? [y/N] " r
+            [[ ${r,,} == y ]] || { info "cancelled"; continue; }
         fi
         info "$profile — ${DESC[$profile]}"
         case $h in
@@ -202,19 +200,19 @@ EOF
             pamac)  pamac install --no-confirm ${PKGS[$profile]} ;;
             pacman) sudo pacman -S --needed --noconfirm ${PKGS[$profile]} ;;
         esac
-        done_ "$profile instalado"
+        done_ "$profile installed"
     done
 }
 
 cmd_remove() {
-    (( $# )) || die "diz-me que perfis remover"
+    (( $# )) || die "which profiles should I remove?"
     for profile in "$@"; do
-        [[ -v PKGS[$profile] ]] || die "perfil desconhecido: $profile"
+        [[ -v PKGS[$profile] ]] || die "unknown profile: $profile"
         [[ ${PKGS[$profile]} == "__delonix__" ]] && {
             sudo rm -f /usr/local/bin/delonix /usr/local/bin/delonixctl
-            done_ "delonix removido"; continue; }
+            done_ "delonix removed"; continue; }
         sudo pacman -Rns --noconfirm ${PKGS[$profile]} || true
-        done_ "$profile removido"
+        done_ "$profile removed"
     done
 }
 
@@ -231,7 +229,7 @@ cmd_db() {
             postgres|postgresql) echo postgresql ;;
             redis|valkey)        echo valkey ;;
             mongo|mongodb)       echo mongodb ;;
-            *) die "base de dados desconhecida: $1 (postgres|redis|mongo)" ;;
+            *) die "unknown database: $1 (postgres|redis|mongo)" ;;
         esac
     }
 
@@ -239,7 +237,7 @@ cmd_db() {
         # O Postgres não arranca sem um cluster inicializado — e a mensagem de
         # erro não diz isso a ninguém que seja a primeira vez.
         [[ -s /var/lib/postgres/data/PG_VERSION ]] && return 0
-        info "a inicializar o cluster do PostgreSQL (uma única vez)"
+        info "initialising the PostgreSQL cluster (once)"
         sudo -u postgres initdb --locale=C.UTF-8 --encoding=UTF8 \
             -D /var/lib/postgres/data
     }
@@ -249,22 +247,22 @@ cmd_db() {
         case $action in
             start|on)
                 [[ $unit == postgresql ]] && _initdb
-                sudo systemctl start "$unit" && done_ "$db a correr"
+                sudo systemctl start "$unit" && done_ "$db running"
                 ;;
             enable)
                 [[ $unit == postgresql ]] && _initdb
-                sudo systemctl enable --now "$unit" && done_ "$db activo e a arrancar com o sistema"
+                sudo systemctl enable --now "$unit" && done_ "$db running and enabled at boot"
                 ;;
             stop|off)
-                sudo systemctl stop "$unit" && done_ "$db parado"
+                sudo systemctl stop "$unit" && done_ "$db stopped"
                 ;;
             disable)
-                sudo systemctl disable --now "$unit" && done_ "$db desactivado"
+                sudo systemctl disable --now "$unit" && done_ "$db disabled"
                 ;;
             status)
                 printf '  %-10s %s\n' "$db" "$(systemctl is-active "$unit" 2>/dev/null)"
                 ;;
-            *) die "usa: delonix-toolbox db start|stop|enable|disable|status [postgres redis mongo]" ;;
+            *) die "usage: delonix-toolbox db start|stop|enable|disable|status [postgres redis mongo]" ;;
         esac
     done
 }
@@ -296,13 +294,13 @@ cmd_lab() {
         if command -v delonix >/dev/null; then target=delonix
         elif command -v podman >/dev/null; then target=podman
         elif command -v docker >/dev/null; then target=docker
-        else die "sem motor de containers (instala o delonix: delonix-toolbox install delonix)"; fi
+        else die "no container engine (install one: delonix-toolbox install delonix)"; fi
     fi
-    command -v "$target" >/dev/null || die "motor '$target' não está instalado"
+    command -v "$target" >/dev/null || die "engine '$target' is not installed"
 
     _lab_dir() {
         local d="$LABS_DIR/$1"
-        [[ -d $d ]] || die "laboratório desconhecido: $1 (vê: delonix-toolbox lab list)"
+        [[ -d $d ]] || die "unknown lab: $1 (see: delonix-toolbox lab list)"
         echo "$d"
     }
 
@@ -315,7 +313,7 @@ cmd_lab() {
         mkdir -p "$destino/dados"
         if [[ -d $origem/config && ! -d $destino/config ]]; then
             cp -a "$origem/config" "$destino/config"
-            info "configurações copiadas para $destino/config (edita à vontade)"
+            info "configuration copied to $destino/config (yours to edit)"
         fi
         # Directórios de dados que os volumes esperam
         while read -r d; do
@@ -327,7 +325,7 @@ cmd_lab() {
 
     case $action in
         list|"")
-            printf '%sLaboratórios%s   (motor: %s)\n\n' "$BLD" "$RST" "$target"
+            printf '%sLabs%s   (engine: %s)\n\n' "$BLD" "$RST" "$target"
             for d in "$LABS_DIR"/*/; do
                 [[ -d $d ]] || continue
                 local nome; nome=$(basename "$d")
@@ -338,21 +336,21 @@ cmd_lab() {
             ;;
 
         up)
-            [[ -n $lab ]] || die "diz-me qual: delonix-toolbox lab up observability"
+            [[ -n $lab ]] || die "which one? delonix-toolbox lab up observability"
             local destino; destino=$(_lab_preparar "$lab")
-            info "a levantar '$lab' com o $target"
+            info "bringing '$lab' up with $target"
             case $target in
                 delonix) delonix pod create -f "$destino/pod.yaml" ;;
                 podman)  podman kube play --replace "$destino/pod.yaml" ;;
                 docker)  _lab_docker_up "$destino/pod.yaml" ;;
-            esac || die "falhou a levantar '$lab'"
-            done_ "'$lab' a correr"
+            esac || die "failed to bring '$lab' up"
+            done_ "'$lab' running"
             [[ -f $(_lab_dir "$lab")/PORTAS ]] && cat "$(_lab_dir "$lab")/PORTAS"
-            printf '  dados e configuração em: %s\n\n' "$destino"
+            printf '  data and configuration in: %s\n\n' "$destino"
             ;;
 
         down|stop)
-            [[ -n $lab ]] || die "diz-me qual: delonix-toolbox lab down observability"
+            [[ -n $lab ]] || die "which one? delonix-toolbox lab down observability"
             local destino="$LABS_DATA/$lab" nome_pod
             nome_pod=$(yq -r '.metadata.name' "$destino/pod.yaml" 2>/dev/null || echo "delonix-$lab")
             case $target in
@@ -360,19 +358,19 @@ cmd_lab() {
                 podman)  podman kube down "$destino/pod.yaml" ;;
                 docker)  _lab_docker_down "$destino/pod.yaml" ;;
             esac
-            done_ "'$lab' parado (os dados ficam em $destino)"
+            done_ "'$lab' stopped (data kept in $destino)"
             ;;
 
         status)
             case $target in
-                delonix) delonix pod ls 2>/dev/null || warn "nenhum pod a correr" ;;
+                delonix) delonix pod ls 2>/dev/null || warn "no pods running" ;;
                 podman)  podman pod ps --filter "name=delonix-" 2>/dev/null ;;
                 docker)  docker ps --filter "label=app=delonix-lab" ;;
             esac
             ;;
 
         logs)
-            [[ -n $lab ]] || die "diz-me qual"
+            [[ -n $lab ]] || die "which one?"
             local nome_pod; nome_pod=$(yq -r '.metadata.name' "$LABS_DATA/$lab/pod.yaml" 2>/dev/null)
             case $target in
                 delonix) delonix pod logs "$nome_pod" ;;
@@ -381,7 +379,7 @@ cmd_lab() {
             esac
             ;;
 
-        *) die "usa: delonix-toolbox lab list|up|down|status|logs [nome] [--target motor]" ;;
+        *) die "usage: delonix-toolbox lab list|up|down|status|logs [name] [--target engine]" ;;
     esac
 }
 
@@ -439,7 +437,7 @@ cmd_eyecandy() {
             for fx in blur contrast slidingpopups fade scale glide translucency; do
                 kwriteconfig6 --file "$kwin" --group Plugins --key "${fx}Enabled" true
             done
-            done_ "animações e efeitos ligados"
+            done_ "animations and effects on"
             ;;
         off)
             kwriteconfig6 --file "$kg"   --group KDE --key AnimationDurationFactor 0
@@ -448,12 +446,12 @@ cmd_eyecandy() {
                       magiclamp squash wobblywindows fallapart sheet; do
                 kwriteconfig6 --file "$kwin" --group Plugins --key "${fx}Enabled" false
             done
-            done_ "animações e efeitos desligados (o default do DelonixOS)"
+            done_ "animations and effects off (the DelonixOS default)"
             ;;
-        *) die "usa: delonix-toolbox eyecandy on|off" ;;
+        *) die "usage: delonix-toolbox eyecandy on|off" ;;
     esac
     qdbus6 org.kde.KWin /KWin reconfigure 2>/dev/null ||
-        printf '%s  (reinicia a sessão para aplicar)%s\n' "$DIM" "$RST"
+        printf '%s  (log out and back in to apply)%s\n' "$DIM" "$RST"
 }
 
 # --- actualizar o sistema e o motor da casa -----------------------------------
@@ -466,12 +464,12 @@ cmd_update() {
         case $1 in
             --delonix-only) so_delonix=1; shift ;;
             --check|-n)     verificar=1; shift ;;
-            *) die "usa: delonix update [--delonix-only] [--check]" ;;
+            *) die "usage: delonix update [--delonix-only] [--check]" ;;
         esac
     done
 
     if (( verificar )); then
-        info "a verificar actualizações (sem instalar)"
+        info "checking for updates (nothing will be installed)"
         checkupdates 2>/dev/null | head -30 ||
             sudo pacman -Sy >/dev/null 2>&1 && pacman -Qu | head -30
         local atual nova
@@ -484,10 +482,10 @@ cmd_update() {
     fi
 
     if (( ! so_delonix )); then
-        info "sistema (Manjaro + [delonix] + AUR)"
+        info "system (Manjaro + [delonix] + AUR)"
         if command -v yay >/dev/null; then yay -Syu --noconfirm
         else sudo pacman -Syu --noconfirm; fi
-        done_ "sistema actualizado"
+        done_ "system updated"
     fi
 
     # O runtime vem dos artefactos publicados, não de um repositório.
@@ -496,7 +494,7 @@ cmd_update() {
     install_delonix
     local depois; depois=$(delonix --version 2>/dev/null | head -1)
     if [[ $antes == "$depois" && -n $antes ]]; then
-        printf '  %sjá estava na versão mais recente (%s)%s\n' "$DIM" "$antes" "$RST"
+        printf '  %salready at the latest version (%s)%s\n' "$DIM" "$antes" "$RST"
     else
         done_ "${antes:-nada} → ${depois:-?}"
     fi
@@ -504,14 +502,14 @@ cmd_update() {
     # Reconstruir o initramfs só se o núcleo ou o splash mudaram — a mensagem
     # importa mais do que o comando: quem não sabe, reinicia sem saber porquê.
     if [[ -n $(find /boot -name 'initramfs-*.img' -newer /var/lib/pacman/db.lck 2>/dev/null) ]]; then
-        warn "o kernel foi actualizado — reinicia para o usar"
+        warn "the kernel was updated — reboot to use it"
     fi
     printf '\n'
     ok_versoes
 }
 
 ok_versoes() {
-    printf '%sVersões%s\n' "$BLD" "$RST"
+    printf '%sVersions%s\n' "$BLD" "$RST"
     local pares=(
         "DelonixOS:$(pacman -Q delonix-os 2>/dev/null | awk '{print $2}')"
         "runtime:$(delonix --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
@@ -530,15 +528,15 @@ cmd_unprivileged_ports() {
             echo 'net.ipv4.ip_unprivileged_port_start = 80' |
                 sudo tee /etc/sysctl.d/98-delonix-lowports.conf >/dev/null
             sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
-            done_ "processos sem root podem agora ligar-se a partir da porta 80"
-            printf '%s  (compromisso de segurança consciente — ver /etc/sysctl.d/99-delonix.conf)%s\n' "$DIM" "$RST"
+            done_ "unprivileged processes may now bind from port 80"
+            printf '%s  (a deliberate security trade-off — see /etc/sysctl.d/99-delonix.conf)%s\n' "$DIM" "$RST"
             ;;
         off)
             sudo rm -f /etc/sysctl.d/98-delonix-lowports.conf
             sudo sysctl -w net.ipv4.ip_unprivileged_port_start=1024
-            done_ "reposto o valor seguro (1024)"
+            done_ "restored the safe value (1024)"
             ;;
-        *) die "usa: delonix-toolbox unprivileged-ports on|off" ;;
+        *) die "usage: delonix-toolbox unprivileged-ports on|off" ;;
     esac
 }
 
@@ -555,5 +553,5 @@ case ${1:-help} in
     help|--help|-h)
         sed -n '2,12p' "$0" | sed 's/^# \?//'
         printf '\n'; cmd_list ;;
-    *) die "comando desconhecido: $1 (tenta: delonix-toolbox help)" ;;
+    *) die "unknown command: $1 (try: delonix-toolbox help)" ;;
 esac

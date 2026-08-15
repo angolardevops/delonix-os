@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# `delonix-video` — a ponte entre o OBS e o DaVinci Resolve.
+# delonix-video — the bridge between OBS and DaVinci Resolve.
 #
-#   delonix-video para-davinci aula.mkv        # converte para DNxHR (importa direito)
-#   delonix-video para-davinci ~/Vídeos/*.mkv  # vários de uma vez
-#   delonix-video publicar aula-editada.mov    # comprime para publicar
-#   delonix-video info aula.mkv
+#   delonix-video to-davinci lesson.mkv      convert to DNxHR (imports cleanly)
+#   delonix-video to-davinci ~/Videos/*.mkv  several at once
+#   delonix-video publish edited.mov         compress for publishing
+#   delonix-video info lesson.mkv
 #
-# Porque é que isto existe: a versão **gratuita** do DaVinci Resolve para Linux
-# não descodifica H.264/H.265 — é uma limitação de licenciamento da Blackmagic,
-# não da distro. Uma gravação do OBS (x264) simplesmente não aparece na timeline,
-# e a mensagem de erro não explica nada. Converter para DNxHR resolve, e é o
-# fluxo que qualquer tutorial acaba por recomendar.
+# Why this exists: the **free** version of DaVinci Resolve for Linux does not
+# decode H.264/H.265 — a Blackmagic licensing limitation, not a distro one. An
+# OBS recording (x264) simply does not appear on the timeline, and the error
+# explains nothing. Converting to DNxHR fixes it, and it is the workflow every
+# tutorial ends up recommending.
 #
-# Porquê DNxHR e não ProRes: descodifica mais depressa em CPU x86 e o Resolve
-# lê-o nativamente em Linux. O custo é o tamanho — ~2 GB por 10 min a 1080p —,
-# por isso o original fica onde está e não é apagado.
+# Why DNxHR and not ProRes: it decodes faster on x86 CPUs and Resolve reads it
+# natively on Linux. The cost is size — ~2 GB per 10 min at 1080p — so the
+# original is left where it is and never deleted.
 set -euo pipefail
 
 RED=$'\e[31m'; GRN=$'\e[32m'; YLW=$'\e[33m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
@@ -23,77 +23,76 @@ ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$*"; }
 warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$*"; }
 die()  { printf '%s✗%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
 
-command -v ffmpeg >/dev/null || die "preciso do ffmpeg"
+command -v ffmpeg >/dev/null || die "ffmpeg is required"
 
-# --- perfis DNxHR -------------------------------------------------------------
-# `dnxhr_sq` é o equilíbrio certo para captura de ecrã: qualidade suficiente para
-# editar e rever, metade do tamanho do `hq`. Para gradação de cor a sério usa
-# `--perfil hq`.
-perfil=dnxhr_sq
-destino=""
-apagar_original=false
+# --- DNxHR profiles -----------------------------------------------------------
+# `dnxhr_sq` is the right balance for screen capture: enough quality to edit and
+# review, half the size of `hq`. For serious colour grading use `--profile hq`.
+profile=dnxhr_sq
+outdir=""
+delete_source=false
 
-_transcodificar() {
-    local entrada=$1 saida=$2
-    [[ -f $entrada ]] || die "não existe: $entrada"
+_transcode() {
+    local input=$1 output=$2
+    [[ -f $input ]] || die "no such file: $input"
 
-    # O áudio tem de ser PCM: o Resolve também não lê AAC em Linux.
-    info "$(basename "$entrada") → $(basename "$saida")"
-    ffmpeg -hide_banner -loglevel warning -stats -i "$entrada" \
-        -c:v dnxhd -profile:v "$perfil" -pix_fmt yuv422p \
+    # Audio must be PCM: Resolve does not read AAC on Linux either.
+    info "$(basename "$input") → $(basename "$output")"
+    ffmpeg -hide_banner -loglevel warning -stats -i "$input" \
+        -c:v dnxhd -profile:v "$profile" -pix_fmt yuv422p \
         -c:a pcm_s16le -ar 48000 \
         -movflags +faststart \
-        "$saida"
+        "$output"
 
-    local antes depois
-    antes=$(du -h "$entrada" | cut -f1)
-    depois=$(du -h "$saida" | cut -f1)
-    ok "$antes → $depois   (o original fica onde está)"
-    $apagar_original && { rm -f "$entrada"; warn "original apagado a pedido"; }
+    local before after
+    before=$(du -h "$input" | cut -f1)
+    after=$(du -h "$output" | cut -f1)
+    ok "$before → $after   (the original is left untouched)"
+    $delete_source && { rm -f "$input"; warn "source deleted as requested"; }
 }
 
-cmd_para_davinci() {
-    (( $# )) || die "usa: delonix-video para-davinci <ficheiro...>"
-    for entrada in "$@"; do
-        local saida
-        if [[ -n $destino ]]; then
-            mkdir -p "$destino"
-            saida="$destino/$(basename "${entrada%.*}")-dnxhr.mov"
+cmd_to_davinci() {
+    (( $# )) || die "usage: delonix-video to-davinci <file...>"
+    for input in "$@"; do
+        local output
+        if [[ -n $outdir ]]; then
+            mkdir -p "$outdir"
+            output="$outdir/$(basename "${input%.*}")-dnxhr.mov"
         else
-            saida="${entrada%.*}-dnxhr.mov"
+            output="${input%.*}-dnxhr.mov"
         fi
-        [[ -e $saida ]] && { warn "já existe, saltado: $(basename "$saida")"; continue; }
-        _transcodificar "$entrada" "$saida"
+        [[ -e $output ]] && { warn "exists, skipped: $(basename "$output")"; continue; }
+        _transcode "$input" "$output"
     done
 }
 
-cmd_publicar() {
-    (( $# )) || die "usa: delonix-video publicar <ficheiro...>"
-    for entrada in "$@"; do
-        local saida="${entrada%.*}-publicar.mp4"
-        info "$(basename "$entrada") → $(basename "$saida")"
-        # CRF 20 com `veryslow` a 1080p: o tamanho que uma aula de uma hora
-        # devia ter, sem que o texto do terminal fique com artefactos.
-        ffmpeg -hide_banner -loglevel warning -stats -i "$entrada" \
+cmd_publish() {
+    (( $# )) || die "usage: delonix-video publish <file...>"
+    for input in "$@"; do
+        local output="${input%.*}-published.mp4"
+        info "$(basename "$input") → $(basename "$output")"
+        # CRF 20 with `veryslow` at 1080p: the size a one-hour lesson should be,
+        # without the terminal text picking up artefacts.
+        ffmpeg -hide_banner -loglevel warning -stats -i "$input" \
             -c:v libx264 -preset veryslow -crf 20 -pix_fmt yuv420p \
             -c:a aac -b:a 192k -movflags +faststart \
-            "$saida"
-        ok "$(du -h "$saida" | cut -f1)"
+            "$output"
+        ok "$(du -h "$output" | cut -f1)"
     done
 }
 
 cmd_info() {
-    (( $# )) || die "usa: delonix-video info <ficheiro>"
+    (( $# )) || die "usage: delonix-video info <file>"
     for f in "$@"; do
         printf '\n%s%s%s\n' "$BLD" "$(basename "$f")" "$RST"
         ffprobe -hide_banner -v error -show_entries \
             format=duration,size,bit_rate:stream=codec_name,codec_type,width,height,r_frame_rate \
             -of default=noprint_wrappers=1 "$f"
-        # O aviso que interessa a quem edita no Resolve gratuito.
+        # The warning that matters to anyone editing in the free Resolve.
         if ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
              -of csv=p=0 "$f" 2>/dev/null | grep -qE '^(h264|hevc)$'; then
-            printf '\n  %s!%s H.264/H.265 — o Resolve gratuito para Linux não lê isto.\n' "$YLW" "$RST"
-            printf '    delonix-video para-davinci %s\n' "$(basename "$f")"
+            printf '\n  %s!%s H.264/H.265 — the free Resolve for Linux cannot read this.\n' "$YLW" "$RST"
+            printf '    delonix-video to-davinci %s\n' "$(basename "$f")"
         fi
     done
     printf '\n'
@@ -101,18 +100,18 @@ cmd_info() {
 
 while [[ ${1:-} == --* ]]; do
     case $1 in
-        --perfil)  perfil=$2; shift 2 ;;
-        --destino) destino=$2; shift 2 ;;
-        --apagar-original) apagar_original=true; shift ;;
+        --profile) profile=$2; shift 2 ;;
+        --output)  outdir=$2; shift 2 ;;
+        --delete-source) delete_source=true; shift ;;
         --help|-h) sed -n '2,20p' "$0" | sed 's/^# \?//'; exit 0 ;;
-        *) die "opção desconhecida: $1" ;;
+        *) die "unknown option: $1" ;;
     esac
 done
 
 case ${1:-help} in
-    para-davinci|davinci) shift; cmd_para_davinci "$@" ;;
-    publicar|publish)     shift; cmd_publicar "$@" ;;
+    to-davinci|davinci) shift; cmd_to_davinci "$@" ;;
+    publish)              shift; cmd_publish "$@" ;;
     info)                 shift; cmd_info "$@" ;;
     help|--help|-h)       sed -n '2,20p' "$0" | sed 's/^# \?//' ;;
-    *) die "comando desconhecido: $1 (tenta: delonix-video help)" ;;
+    *) die "unknown command: $1 (try: delonix-video help)" ;;
 esac

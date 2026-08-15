@@ -127,8 +127,9 @@ alias pps='podman ps -a'
 alias dps='docker ps -a'
 
 # IaC
-# carga pesada sem perder a máquina
-alias carga='delonix-carga'
+# carga pesada sem perder a máquina (o comando é EN; o atalho é teu)
+alias load='delonix-load'
+alias carga='delonix-load'
 
 # linguagens
 alias c='cargo'
