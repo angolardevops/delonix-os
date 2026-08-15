@@ -144,6 +144,24 @@ else
     warn "shellcheck não instalado — 'make lint' corre-o num contentor"
 fi
 
+# `((n++))` devolve o valor ANTIGO. Quando esse valor é 0, o estado de saída é
+# 1 — e num script com `set -e` isso mata o processo ali mesmo. É invisível ao
+# `bash -n`, o shellcheck só o assinala como "info", e custou-nos um build que
+# morreu logo a seguir a imprimir que ia começar a trabalhar.
+echo "== aritmética que mata scripts com set -e =="
+inc=0
+while IFS= read -r -d '' f; do
+    grep -qE '^set -[a-z]*e' "$f" || continue          # só nos scripts com set -e
+    while IFS= read -r linha; do
+        bad "${f#$REPO_DIR/}:${linha%%:*} usa (( x++ )) — devolve 0 e mata o set -e"
+        ((inc++))
+        # `sed 's/#.*//'` primeiro: senão o próprio comentário que explica esta
+        # armadilha é apanhado como se fosse a armadilha. Aconteceu.
+    done < <(sed 's/#.*//' "$f" | grep -nE '\(\([a-zA-Z_]+(\+\+|--)\)\)')
+done < <(find "$REPO_DIR/scripts" "$REPO_DIR/packaging" -type f \
+            \( -name '*.sh' -o -name 'delonix-*' -o -name 'firstboot' \) -print0 2>/dev/null)
+(( inc == 0 )) && ok "nenhum pós-incremento perigoso"
+
 echo "== sintaxe dos scripts =="
 while IFS= read -r -d '' s; do
     if bash -n "$s" 2>/dev/null; then ok "${s#$REPO_DIR/}"; else bad "sintaxe: ${s#$REPO_DIR/}"; fi

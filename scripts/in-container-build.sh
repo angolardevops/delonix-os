@@ -236,7 +236,11 @@ else
         # considera-as actuais e nunca chega a usar os mirrors novos. A data
         # delas é a do servidor, por isso dá para ver de onde vieram.
         rm -f "$CHROOT_BASE/$fs"/var/lib/pacman/sync/{core,extra,multilib}.db
-        ((encontrados++))
+        # `((encontrados++))` NÃO serve aqui: o pós-incremento devolve o valor
+        # ANTIGO, e um 0 é estado de saída 1 — com `set -e`, o script morre na
+        # primeira iteração. Foi assim que este bloco, já a correr no caminho
+        # certo, matou o build logo a seguir a imprimir que ia começar.
+        encontrados=$(( encontrados + 1 ))
         log "  $fs: mirrorlist substituído, dbs antigas apagadas"
     done
     if (( encontrados == 0 )); then

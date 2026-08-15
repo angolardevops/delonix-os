@@ -75,8 +75,13 @@ for pkg in delonix-os-branding delonix-os-settings delonix-os-tools delonix-os; 
 
     chmod -R a+rwX "$work"
     if (cd "$work" && "${RUN[@]}" makepkg --noconfirm --clean --nodeps --skipinteg); then
-        cp "$work"/*.pkg.tar.* "$OUT_REPO"/ 2>/dev/null && ((built++)) &&
+        # Sem `((built++))` na cadeia: o pós-incremento devolve o valor antigo,
+        # por isso na PRIMEIRA compilação com êxito devolvia 0 → estado 1 → o
+        # printf nunca corria e a lista inteira falhava sob `set -e`.
+        if cp "$work"/*.pkg.tar.* "$OUT_REPO"/ 2>/dev/null; then
+            built=$(( built + 1 ))
             printf '  \e[32m✓\e[0m %s\n' "$pkg"
+        fi
     else
         warn "$pkg falhou a compilar"
     fi
