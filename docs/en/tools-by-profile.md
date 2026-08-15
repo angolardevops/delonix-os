@@ -28,6 +28,7 @@ The layer nobody thinks about until it's missing.
 | `wl-clipboard` / `xclip` | `command \| wl-copy`. Without it there is no pipe to the clipboard on Wayland, which is the default session. |
 | `gdb` `lldb` `valgrind` `heaptrack` `hyperfine` | Debug it, find the leak, and prove it got faster with statistics instead of a feeling. |
 | `protobuf` + `buf` | Define gRPC contracts, not just call them (`grpcurl` was already here). |
+| `cloudflared` `ngrok` · pinggy over SSH | `delonix tunnel 8080` puts what runs here on a public URL — how you test a Stripe or GitHub webhook against the code you are writing. |
 | `Claude Code` · `Antigravity` | AI assistant in the terminal and an AI-first IDE. |
 
 ---

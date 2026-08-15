@@ -22,3 +22,4 @@ mongosh-bin                              # shell do MongoDB
 mongodb-tools                            # mongodump/mongorestore/mongoimport
 kind-bin                                 # k8s local; o `kind` ainda não está na Manjaro stable
 intel-npu-driver-bin                     # NPU dos Core Ultra; idem
+ngrok                                    # túnel com inspecção de pedidos em :4040 (exige conta)

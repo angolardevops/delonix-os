@@ -13,6 +13,7 @@ ficam em português, que é onde o raciocínio foi escrito.
 | [`delonix update`](delonix-toolbox.md#update--sistema-e-motor-num-comando) | actualizar o sistema e o Delonix Runtime |
 | [`delonix-load`](#delonix-load) | correr trabalho pesado sem perder a máquina |
 | [`delonix-tune`](#delonix-tune) | afinar a máquina ao hardware que ela tem mesmo |
+| [`delonix tunnel`](#delonix-tunnel) | pôr um serviço local numa URL pública |
 | [`delonix-kernel`](kernel.md) | compilar, arrancar e instalar um kernel Linux |
 | [`delonix-video`](#delonix-video) | levar gravações do OBS para o DaVinci Resolve |
 | [`delonixos`](cli.md) | construir a ISO, ou a tua própria distro |
@@ -97,6 +98,47 @@ portátil é o mais rápido dos dois.
 
 Se discordares para a tua máquina, `delonix-tune profile lab` força o perfil de
 secretária e fica assim até mandares o contrário.
+
+## `delonix tunnel`
+
+```bash
+delonix tunnel 8080                        # provedor por omissão (pinggy)
+delonix tunnel --provider cloudflare 3000
+delonix tunnel --provider ngrok 8080
+delonix tunnel --list                      # o que está exposto agora
+delonix tunnel --stop                      # fechar
+```
+
+Um webhook do Stripe ou do GitHub tem de chegar a um serviço que corre neste
+portátil, ou um colega precisa de ver uma demonstração antes de ir para
+produção. O trabalho é sempre o mesmo; o que muda é o provedor, e cada um tem as
+suas opções e a sua maneira de imprimir a URL.
+
+| Provedor | Conta | Instalado como | Melhor para |
+|---|---|---|---|
+| **pinggy** *(omissão)* | nenhuma | nada — é SSH puro | máquina acabada de instalar; expira aos 60 min |
+| **cloudflare** | nenhuma para `try-cloudflare` | `cloudflared` (repos) | demonstração que tem de aguentar a tarde |
+| **ngrok** | obrigatória, mesmo grátis | `ngrok` (AUR) | quando precisas de *ver* o corpo do pedido, em `localhost:4040` |
+
+O pinggy é o padrão por ser o único que não precisa de nada: é reencaminhamento
+remoto de porta por SSH (`ssh -p 443 -R0:localhost:8080 a.pinggy.io`) e o
+`openssh` já cá está. Não há binário do pinggy na ISO porque não há binário do
+pinggy para instalar.
+
+### Recusa algumas portas de propósito
+
+Expor um serviço local significa que qualquer pessoa com a URL lhe chega — é
+esse o objectivo, e é também o risco. Os serviços de desenvolvimento costumam
+assumir que só tu lhes chegas, por isso as portas que quase nunca se querem
+públicas (PostgreSQL, Redis, MongoDB, etcd, a API do Kubernetes…) são recusadas
+sem um `--force`.
+
+Confirma também que há mesmo alguma coisa à escuta. Um túnel para uma porta sem
+nada por trás devolve 502, e isso custa dez minutos a perceber.
+
+> O `delonix` é o binário do runtime e não tem subcomando `tunnel`. O `.zshrc`
+> intercepta a forma e delega — e deixa de o fazer no dia em que o runtime
+> ganhar o seu. Fora do zsh, usa `delonix-tunnel`.
 
 ## `delonix-video`
 

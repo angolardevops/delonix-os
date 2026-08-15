@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+#
+# delonix-tunnel — expose a local service on a public URL.
+#
+#   delonix tunnel 8080                        default provider
+#   delonix tunnel --provider pinggy 8080      no account, no binary, no signup
+#   delonix tunnel --provider cloudflare 3000  Cloudflare Tunnel
+#   delonix tunnel --provider ngrok 8080       ngrok
+#   delonix tunnel --list                      what is currently exposed
+#   delonix tunnel --stop [id]                 close one, or all of them
+#
+# (Outside zsh, or in a script, call it as `delonix-tunnel`.)
+#
+# WHY THIS EXISTS
+#
+# The job is always the same — a webhook from Stripe or GitHub has to reach a
+# service running on this laptop, or a colleague needs to see a demo before it
+# is deployed. What differs is the provider, and each one has its own flags, its
+# own way of printing the URL, and its own idea of what a port is.
+#
+# THE THREE PROVIDERS, AND WHEN EACH ONE IS RIGHT
+#
+#   pinggy      Nothing to install and no account: it is plain SSH with remote
+#               port forwarding, and `openssh` is already here. Free tunnels
+#               expire after 60 minutes. This is the default because it is the
+#               only one that works on a machine you just installed.
+#
+#   cloudflare  A `try-cloudflare` URL with no account either, and it holds for
+#               as long as the process runs. With an account it gives you a
+#               stable name on your own domain. The right one for a demo that
+#               has to survive the afternoon.
+#
+#   ngrok       Needs an account and a token even for the free tier, but gives
+#               request inspection on http://localhost:4040 — which is what you
+#               want when the webhook arrives and you need to see the body.
+#
+# ONE THING TO BE CLEAR ABOUT
+#
+# This makes a service on your machine reachable by anyone with the URL. That is
+# the entire point, and it is also the risk: a database admin panel or a Kafka
+# UI on a development port is usually built assuming only you can reach it.
+# The command always prints what it is about to expose, and refuses ports that
+# are almost never meant to be public unless you insist with `--force`.
+set -uo pipefail
+
+BOLD=$'\e[1m'; DIM=$'\e[2m'; GRN=$'\e[32m'; YLW=$'\e[33m'; RED=$'\e[31m'; RST=$'\e[0m'
+ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$*"; }
+warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$*"; }
+bad()  { printf '  %s✗%s %s\n' "$RED" "$RST" "$*" >&2; }
+info() { printf '  %s·%s %s\n' "$DIM" "$RST" "$*"; }
+
+STATE_DIR=${XDG_RUNTIME_DIR:-/tmp}/delonix-tunnel
+mkdir -p "$STATE_DIR"
+
+PROVIDER=${DELONIX_TUNNEL_PROVIDER:-pinggy}
+ALVO=""; FORCE=0; MODO=http
+ACCAO=abrir; ID_PARAR=""
+
+# Portas que quase nunca se querem públicas. Não é uma lista de segurança a
+# sério — é a lista dos enganos que acontecem de verdade às duas da manhã.
+declare -A PERIGOSAS=(
+    [22]="SSH"            [5432]="PostgreSQL"   [3306]="MySQL/MariaDB"
+    [6379]="Redis/Valkey" [27017]="MongoDB"     [9200]="Elasticsearch"
+    [2379]="etcd"         [8500]="Consul"       [5900]="VNC"
+    [11211]="memcached"   [9000]="MinIO"        [15672]="RabbitMQ admin"
+    [6443]="API do Kubernetes"
+)
+
+# --- estado -------------------------------------------------------------------
+listar() {
+    local n=0
+    shopt -s nullglob
+    for f in "$STATE_DIR"/*.tunnel; do
+        # shellcheck disable=SC1090
+        source "$f"
+        if kill -0 "$PID" 2>/dev/null; then
+            printf '  %s%-10s%s %s → %s\n' "$BOLD" "$PROV" "$RST" "$LOCAL" "${URL:-(a negociar)}"
+            printf '  %spid %s · delonix tunnel --stop %s%s\n' "$DIM" "$PID" "$(basename "$f" .tunnel)" "$RST"
+            ((n++))
+        else
+            rm -f "$f"          # morreu: não deixar lixo a mentir na listagem
+        fi
+    done
+    (( n )) || info "nenhum túnel aberto"
+}
+
+parar() {
+    local id=${1:-}
+    shopt -s nullglob
+    for f in "$STATE_DIR"/*.tunnel; do
+        [[ -n $id && $(basename "$f" .tunnel) != "$id" ]] && continue
+        # shellcheck disable=SC1090
+        source "$f"
+        kill "$PID" 2>/dev/null && ok "fechado: $PROV $LOCAL"
+        rm -f "$f"
+    done
+}
+
+uso() { sed -n '3,12p' "$0" | sed 's/^# \?//'; exit "${1:-0}"; }
+
+# --- argumentos ---------------------------------------------------------------
+while (( $# )); do
+    case $1 in
+        --provider|-p) PROVIDER=${2:-}; shift 2 ;;
+        --tcp)         MODO=tcp; shift ;;
+        --http)        MODO=http; shift ;;
+        --force)       FORCE=1; shift ;;
+        --list|-l)     ACCAO=listar; shift ;;
+        --stop)        ACCAO=parar; shift
+                       [[ ${1:-} =~ ^[^-] ]] && { ID_PARAR=$1; shift; } ;;
+        -h|--help)     uso 0 ;;
+        -*)            bad "opção desconhecida: $1"; uso 1 ;;
+        *)             ALVO=$1; shift ;;
+    esac
+done
+
+case $ACCAO in
+    listar) listar; exit 0 ;;
+    parar)  parar "$ID_PARAR"; exit 0 ;;
+esac
+
+# --- normalizar o alvo --------------------------------------------------------
+# Aceita `8080`, `localhost:8080` e `10.0.0.5:8080`. Um serviço sem porta não
+# existe, por isso é aqui que se recusa cedo em vez de deixar o provedor falhar
+# com uma mensagem que não ajuda ninguém.
+[[ -z $ALVO ]] && { bad "falta o serviço a expor (uma porta, ou host:porta)"; uso 1; }
+
+if [[ $ALVO =~ ^[0-9]+$ ]]; then
+    HOST=localhost; PORTA=$ALVO
+elif [[ $ALVO =~ ^([^:]+):([0-9]+)$ ]]; then
+    HOST=${BASH_REMATCH[1]}; PORTA=${BASH_REMATCH[2]}
+else
+    bad "não percebi '$ALVO' — usa uma porta (8080) ou host:porta (localhost:8080)"
+    exit 1
+fi
+
+# --- avisos antes de expor ----------------------------------------------------
+printf '\n%sA expor%s %s:%s ao público, via %s%s%s\n' \
+    "$BOLD" "$RST" "$HOST" "$PORTA" "$BOLD" "$PROVIDER" "$RST"
+
+if [[ -n ${PERIGOSAS[$PORTA]:-} ]] && (( ! FORCE )); then
+    bad "a porta $PORTA é normalmente ${PERIGOSAS[$PORTA]}"
+    warn "isso põe ${PERIGOSAS[$PORTA]} ao alcance de quem tiver o link — e estes"
+    warn "serviços costumam assumir que só tu lhes chegas."
+    warn "Se é mesmo o que queres: delonix tunnel --force --provider $PROVIDER $ALVO"
+    exit 1
+fi
+
+# Um serviço que não está a ouvir dá um túnel que devolve 502 e dez minutos a
+# perceber porquê. Verificar custa um milissegundo.
+if command -v ss >/dev/null && ! ss -Hltn "sport = :$PORTA" 2>/dev/null | grep -q .; then
+    warn "nada está à escuta na porta $PORTA — o túnel vai abrir e devolver erro"
+    warn "  (arranca o serviço primeiro, ou confirma a porta com: ss -ltnp)"
+fi
+
+ID=$(printf '%s-%s' "$PROVIDER" "$PORTA")
+FICHEIRO="$STATE_DIR/$ID.tunnel"
+
+guardar() {
+    cat >"$FICHEIRO" <<EOF
+PROV=$PROVIDER
+LOCAL=$HOST:$PORTA
+PID=$1
+URL=${2:-}
+EOF
+}
+
+# --- provedores ---------------------------------------------------------------
+
+t_pinggy() {
+    # Pinggy é SSH e mais nada: `-R0:host:porta` pede um porto remoto e o
+    # servidor responde com a URL. Sem binário, sem conta, sem instalar.
+    #
+    # `-o StrictHostKeyChecking=accept-new`: a chave do a.pinggy.io não está no
+    # known_hosts de uma máquina acabada de instalar, e sem isto o ssh fica à
+    # espera de um "yes" que ninguém vê por trás do pipe.
+    local remoto=a.pinggy.io destino
+    [[ $MODO == tcp ]] && destino="tcp@$remoto" || destino="$remoto"
+
+    info "pinggy: túnel anónimo, expira ao fim de 60 minutos"
+    info "Ctrl-C fecha. Para uma sessão sem limite, usa --provider cloudflare."
+    printf '\n'
+
+    ssh -p 443 -R "0:$HOST:$PORTA" \
+        -o StrictHostKeyChecking=accept-new \
+        -o ServerAliveInterval=30 \
+        -o ExitOnForwardFailure=yes \
+        "$destino" &
+    local pid=$!
+    guardar "$pid"
+    wait "$pid"
+}
+
+t_cloudflare() {
+    command -v cloudflared >/dev/null || {
+        bad "cloudflared não está instalado — sudo pacman -S cloudflared"; exit 1; }
+
+    info "cloudflare: URL try-cloudflare, dura enquanto o processo viver"
+    info "Para um nome estável no teu domínio: cloudflared tunnel login"
+    printf '\n'
+
+    # O cloudflared imprime a URL no meio de uma moldura ASCII. Corre em segundo
+    # plano com o log num ficheiro, para podermos apanhar a URL sem que um pipe
+    # nos esconda o PID verdadeiro — que é o que o --stop precisa de matar.
+    local log="$STATE_DIR/$ID.log"
+    cloudflared tunnel --url "http://$HOST:$PORTA" --no-autoupdate >"$log" 2>&1 &
+    local pid=$!
+    guardar "$pid"
+
+    # Espera pela URL até 20 segundos, sem prender se o cloudflared falhar.
+    local i url=""
+    for (( i=0; i<40; i++ )); do
+        kill -0 "$pid" 2>/dev/null || break
+        url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" 2>/dev/null | head -1)
+        [[ -n $url ]] && break
+        sleep 0.5
+    done
+
+    if [[ -n $url ]]; then
+        guardar "$pid" "$url"
+        printf '\n  %s%s%s\n\n' "$GRN$BOLD" "$url" "$RST"
+        info "Ctrl-C fecha o túnel. O registo completo: $log"
+    else
+        bad "o cloudflared não devolveu uma URL — o registo está em $log"
+        tail -5 "$log" 2>/dev/null | sed 's/^/      /'
+    fi
+
+    wait "$pid"
+    rm -f "$log"
+}
+
+t_ngrok() {
+    # O ngrok vem na ISO (packages/aur.list). Se faltar, é porque a compilação
+    # do AUR foi saltada nesta imagem — daí a instrução ser directa.
+    command -v ngrok >/dev/null || {
+        bad "ngrok não está instalado — yay -S ngrok"
+        info "Sem conta e sem instalar nada: delonix tunnel --provider pinggy $PORTA"
+        exit 1; }
+
+    if [[ ! -f ${NGROK_CONFIG:-$HOME/.config/ngrok/ngrok.yml} ]] && [[ -z ${NGROK_AUTHTOKEN:-} ]]; then
+        bad "o ngrok exige conta e token, mesmo no plano gratuito"
+        info "  1. cria a conta em https://dashboard.ngrok.com"
+        info "  2. ngrok config add-authtoken <token>"
+        info "Sem conta: delonix tunnel --provider pinggy $PORTA"
+        exit 1
+    fi
+
+    info "ngrok: inspecção dos pedidos em http://localhost:4040"
+    printf '\n'
+    ngrok "$MODO" "$HOST:$PORTA" --log stdout &
+    local pid=$!
+    guardar "$pid"
+    wait "$pid"
+}
+
+trap 'rm -f "$FICHEIRO"' EXIT INT TERM
+
+case $PROVIDER in
+    pinggy)              t_pinggy ;;
+    cloudflare|cf)       t_cloudflare ;;
+    ngrok)               t_ngrok ;;
+    *)  bad "provedor desconhecido: $PROVIDER"
+        info "disponíveis: pinggy (sem conta), cloudflare (sem conta), ngrok (com conta)"
+        exit 1 ;;
+esac

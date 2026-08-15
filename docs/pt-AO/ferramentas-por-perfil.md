@@ -28,6 +28,7 @@ A camada em que ninguém pensa até faltar.
 | `wl-clipboard` / `xclip` | `comando \| wl-copy`. Sem isto não há pipe para a área de transferência no Wayland, que é a sessão por omissão. |
 | `gdb` `lldb` `valgrind` `heaptrack` `hyperfine` | Depurar, encontrar a fuga, e provar que ficou mais rápido com estatística em vez de sensação. |
 | `protobuf` + `buf` | Definir contratos gRPC, não apenas chamá-los (o `grpcurl` já cá estava). |
+| `cloudflared` `ngrok` · pinggy por SSH | `delonix tunnel 8080` põe o que corre aqui numa URL pública — é assim que se testa um webhook do Stripe ou do GitHub contra o código que se está a escrever. |
 | `Claude Code` · `Antigravity` | Assistente de IA no terminal e um IDE pensado para IA. |
 
 ---

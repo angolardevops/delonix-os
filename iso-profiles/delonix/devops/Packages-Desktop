@@ -146,6 +146,11 @@ sshfs
 mosh
 sshuttle                # VPN por cima de SSH: chegar a uma subrede privada sem cliente
 croc                    # passar um ficheiro/dump entre máquinas a meio de um incidente
+# Túneis: pôr um serviço local numa URL pública, que é como se testa um webhook
+# do Stripe ou do GitHub contra a máquina onde se está a escrever o código.
+# Ver `delonix tunnel`. O pinggy não precisa de binário nenhum — é SSH puro, e o
+# openssh (acima) já cá está.
+cloudflared             # Cloudflare Tunnel: URL sem conta, dura o que o processo durar
 
 ##############################################################################
 # 6. Containers — rootless e sem daemon (regra da casa)

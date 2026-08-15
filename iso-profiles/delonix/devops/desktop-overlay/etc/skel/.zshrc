@@ -157,12 +157,21 @@ alias ch='cloud-hypervisor'
 # binário real. A verificação faz a função desaparecer sozinha no dia em que o
 # runtime ganhar o seu próprio `update` — sem esconder nada de ninguém.
 delonix() {
-    if [[ ${1:-} == update ]] &&
-       ! command delonix help 2>/dev/null | grep -qE '^[[:space:]]+update([[:space:]]|$)'; then
-        shift
-        command delonix-toolbox update "$@"
-        return $?
-    fi
+    local verbo=${1:-}
+    case $verbo in
+        update|tunnel)
+            # Só delegamos se o binário real ainda NÃO tiver este subcomando.
+            if ! command delonix help 2>/dev/null |
+                 grep -qE "^[[:space:]]+${verbo}([[:space:]]|$)"; then
+                shift
+                case $verbo in
+                    update) command delonix-toolbox update "$@" ;;
+                    tunnel) command delonix-tunnel "$@" ;;
+                esac
+                return $?
+            fi
+            ;;
+    esac
     command delonix "$@"
 }
 

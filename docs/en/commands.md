@@ -13,6 +13,7 @@ Portuguese, which is where the reasoning was written.
 | [`delonix update`](delonix-toolbox.md#update--system-and-engine-in-one-command) | update the system and the Delonix Runtime |
 | [`delonix-load`](#delonix-load) | run heavy work without losing the machine |
 | [`delonix-tune`](#delonix-tune) | tune this machine to the hardware it is actually on |
+| [`delonix tunnel`](#delonix-tunnel) | put a local service on a public URL |
 | [`delonix-kernel`](kernel.md) | build, boot and install a Linux kernel |
 | [`delonix-video`](#delonix-video) | bridge OBS recordings into DaVinci Resolve |
 | [`delonixos`](cli.md) | build the ISO, or your own distro |
@@ -95,6 +96,46 @@ which is what a build is — the mobile profile is the faster of the two.
 
 If you disagree for your machine, `delonix-tune profile lab` forces the desktop
 profile and it stays until you change it.
+
+## `delonix tunnel`
+
+```bash
+delonix tunnel 8080                        # default provider (pinggy)
+delonix tunnel --provider cloudflare 3000
+delonix tunnel --provider ngrok 8080
+delonix tunnel --list                      # what is currently exposed
+delonix tunnel --stop                      # close them
+```
+
+A webhook from Stripe or GitHub has to reach a service running on this laptop,
+or a colleague needs to see a demo before it is deployed. The job is always the
+same; only the provider differs, and each has its own flags and its own way of
+printing the URL.
+
+| Provider | Account | Installed as | Best for |
+|---|---|---|---|
+| **pinggy** *(default)* | none | nothing — it is plain SSH | a machine you just installed; expires after 60 min |
+| **cloudflare** | none for `try-cloudflare` | `cloudflared` (repos) | a demo that has to survive the afternoon |
+| **ngrok** | required, even free | `ngrok` (AUR) | when you need to *see* the request body, at `localhost:4040` |
+
+Pinggy is the default because it is the only one that needs nothing: it is SSH
+remote port forwarding (`ssh -p 443 -R0:localhost:8080 a.pinggy.io`) and
+`openssh` is already here. There is no pinggy binary in the ISO because there is
+no pinggy binary to install.
+
+### It refuses some ports on purpose
+
+Exposing a local service means anyone with the URL can reach it — that is the
+point, and also the risk. Development services usually assume only you can get
+to them, so ports that are almost never meant to be public (PostgreSQL, Redis,
+MongoDB, etcd, the Kubernetes API, …) are refused unless you add `--force`.
+
+It also checks that something is actually listening first. A tunnel to a port
+with nothing behind it returns 502, and that costs ten minutes to work out.
+
+> `delonix` is the runtime binary and has no `tunnel` subcommand. The `.zshrc`
+> intercepts the form and delegates — and stops doing so the day the runtime
+> gains its own. Outside zsh, use `delonix-tunnel`.
 
 ## `delonix-video`
 
