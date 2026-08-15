@@ -88,6 +88,29 @@ else
     while read -r p; do [[ -n $p ]] && bad "pacote bloqueado presente: $p"; done <<<"$violations"
 fi
 
+# As listas Packages-* não são a única porta de entrada. Um pacote da casa que
+# declare `depends=('ttf-jetbrains-mono-nerd')` traz de volta, pelo pacman, os
+# mesmos 233 MB que tirámos da lista — e nada acima o detecta, porque o nome
+# nunca chega a aparecer num Packages-*. Aconteceu a 2026-08-15.
+echo "== dependências dos pacotes da casa =="
+dep_viol=0
+while IFS= read -r -d '' pkgbuild; do
+    nome_pkg=$(basename "$(dirname "$pkgbuild")")
+    # Extrai depends=(...) e optdepends=(...), tira as descrições depois de ':'
+    deps=$(sed -n '/^\(opt\)\?depends=(/,/)/p' "$pkgbuild" |
+           grep -oE "'[^']+'" | tr -d "'" | cut -d: -f1 |
+           sed 's/[<>=].*//' | sort -u)
+    [[ -z $deps ]] && continue
+    while read -r d; do
+        [[ -z $d ]] && continue
+        if grep -qxF "$d" <<<"$blocked"; then
+            bad "$nome_pkg depende de '$d', que está na blocklist"
+            ((dep_viol++))
+        fi
+    done <<<"$deps"
+done < <(find "$REPO_DIR/packaging" -name PKGBUILD -print0)
+(( dep_viol == 0 )) && ok "nenhum pacote da casa reintroduz o que foi removido"
+
 echo "== sintaxe dos scripts =="
 while IFS= read -r -d '' s; do
     if bash -n "$s" 2>/dev/null; then ok "${s#$REPO_DIR/}"; else bad "sintaxe: ${s#$REPO_DIR/}"; fi
@@ -299,6 +322,36 @@ print(f"  \033[32m✓\033[0m {len(nomes)} pacotes existem na Manjaro {BRANCH} "
       f"({len(do_aur)} vêm do AUR, todos declarados)")
 PY
     (( $? )) && ((fails++))
+
+    # Os pacotes do AUR são a ÚNICA classe que o preflight não cobre: não vivem
+    # em nenhum repositório, são compilados durante o build. Um nome que mudou
+    # ou um pacote que foi apagado só dá erro depois de meia hora de compilação.
+    # A consulta à API custa um segundo.
+    echo "== pacotes do AUR (compilados durante o build) =="
+    aur_nomes=$(grep -oE '^[a-z0-9][a-z0-9._+-]*' "$REPO_DIR/packages/aur.list" | sort -u)
+    aur_query=$(echo "$aur_nomes" | sed 's/^/\&arg[]=/' | tr -d '\n')
+    if aur_json=$(curl -sf --max-time 20 \
+            "https://aur.archlinux.org/rpc/?v=5&type=info${aur_query}" 2>/dev/null); then
+        AUR_JSON="$aur_json" AUR_NOMES="$aur_nomes" python3 - <<'PY'
+import json, os, sys
+d = json.loads(os.environ['AUR_JSON'])
+achados = {r['Name']: r for r in d.get('results', [])}
+pedidos = os.environ['AUR_NOMES'].split()
+falta = [p for p in pedidos if p not in achados]
+orfaos = [p for p in pedidos if p in achados and not achados[p].get('Maintainer')]
+for p in falta:
+    print(f"  \033[31m✗\033[0m '{p}' já não existe no AUR — o build ia falhar a compilá-lo")
+for p in orfaos:
+    print(f"  \033[33m!\033[0m '{p}' está órfão no AUR (sem quem o mantenha)")
+if falta:
+    sys.exit(1)
+print(f"  \033[32m✓\033[0m {len(pedidos)} pacotes do AUR existem"
+      + (f" ({len(orfaos)} órfãos)" if orfaos else ""))
+PY
+        (( $? )) && ((fails++))
+    else
+        warn "não consegui falar com o AUR — os $(wc -l <<<"$aur_nomes") pacotes ficam por confirmar"
+    fi
 fi
 
 printf '\n'

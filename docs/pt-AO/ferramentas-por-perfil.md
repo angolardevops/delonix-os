@@ -21,7 +21,7 @@ A camada em que ninguém pensa até faltar.
 | `zsh` + `starship` + `tmux` | Qualquer terminal abre dentro de uma sessão tmux (`delonix`). Um SSH que cai ou uma janela fechada por engano deixam de matar trabalho longo. O prompt mostra o contexto de Kubernetes e avisa a vermelho quando é produção. |
 | `kitty` | Terminal com aceleração por GPU, ligaduras, divisões, e um histórico que se manda directamente para o `fzf`. |
 | `fzf` `ripgrep` `fd` `bat` `eza` `zoxide` `atuin` | Procura difusa, grep rápido, listagens legíveis, histórico de shell pesquisável entre máquinas. |
-| `git` `lazygit` `git-delta` `gh` `glab` `difftastic` `pre-commit` | Git que dá gosto ler e rever. |
+| `git` `lazygit` `git-delta` `gh` `glab` `pre-commit` | Git que dá gosto ler e rever. |
 | `neovim` | Já configurado: 2 espaços em YAML/HCL, manifestos de Kubernetes detectados pelo caminho, sem gestor de plugins para combater. |
 | `jq` `yq` `jless` | Cirurgia em JSON e YAML. |
 | `just` | Runner de tarefas por projecto — o Makefile sem as armadilhas dos tabs. |

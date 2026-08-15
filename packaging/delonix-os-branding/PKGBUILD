@@ -13,9 +13,17 @@ pkgdesc="DelonixOS — tema global, splash animado de arranque, GRUB, SDDM e wal
 arch=('any')
 url="https://ngolacloud.com"
 license=('GPL-3.0-or-later')
-depends=('plymouth' 'breeze-icons' 'ttf-jetbrains-mono-nerd')
+# A fonte é uma dependência a sério: o tema global e o kitty pedem-na pelo nome,
+# e sem ela o sistema cai numa monospace qualquer.
+#
+# `ttf-jetbrains-mono-nerd` NÃO — são 233 MB da fonte inteira repatchada. A
+# fonte normal (8 MB) mais o ficheiro de símbolos (2,5 MB) dão o mesmo desenho,
+# com o fontconfig a fazer a ponte: ver etc/fonts/conf.d/75-delonix-nerd-symbols.conf.
+depends=('plymouth' 'breeze-icons'
+         'ttf-jetbrains-mono' 'ttf-nerd-fonts-symbols-mono' 'fontconfig')
 optdepends=('grub: tema do menu de arranque'
             'sddm: tema do ecrã de login')
+backup=('etc/fonts/conf.d/75-delonix-nerd-symbols.conf')
 source=("delonix-os-$pkgver.tar.gz")
 sha256sums=('SKIP')
 install=delonix-os-branding.install

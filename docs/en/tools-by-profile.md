@@ -21,7 +21,7 @@ The layer nobody thinks about until it's missing.
 | `zsh` + `starship` + `tmux` | Every terminal opens inside a tmux session (`delonix`). A dropped SSH or a closed window stops killing long-running work. The prompt shows the Kubernetes context and warns in red on production. |
 | `kitty` | GPU-accelerated terminal, ligatures, splits, and a scrollback you can pipe into `fzf`. |
 | `fzf` `ripgrep` `fd` `bat` `eza` `zoxide` `atuin` | Fuzzy find, fast grep, readable listings, searchable shell history across machines. |
-| `git` `lazygit` `git-delta` `gh` `glab` `difftastic` `pre-commit` | Git that is actually pleasant to read and review. |
+| `git` `lazygit` `git-delta` `gh` `glab` `pre-commit` | Git that is actually pleasant to read and review. |
 | `neovim` | Pre-configured: 2-space indent for YAML/HCL, Kubernetes manifests detected by path, no plugin manager to fight. |
 | `jq` `yq` `jless` | JSON and YAML surgery. |
 | `just` | Per-project task runner — a Makefile without the tab traps. |
