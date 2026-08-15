@@ -147,6 +147,7 @@ echo "→ a construir com $ENGINE (imagem: $IMAGE, kernel: $KERNEL)"
     -e DELONIX_KERNEL="$KERNEL" \
     -e DELONIX_SKIP_AUR="${DELONIX_SKIP_AUR:-0}" \
     -e DELONIX_CLEAN="${DELONIX_CLEAN:-0}" \
+    -e DELONIX_MIRROR="${DELONIX_MIRROR:-}" \
     "${OVERRIDE_MOUNT[@]}" \
     "$IMAGE" "${CMD[@]}"
 status=$?

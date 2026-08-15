@@ -42,9 +42,17 @@ log() { printf '\n\e[1m→ %s\e[0m\n' "$*"; }
 # `--fasttrack` só mantém mirrors que estão MESMO sincronizados, e é para isso
 # que existe. Se falhar (sem rede para a API), seguimos com a lista da imagem —
 # a verificação de frescura abaixo é que decide se isso é aceitável.
-log "a escolher mirrors sincronizados (--fasttrack)"
-pacman-mirrors --api --protocol https --set-branch "${BRANCH:-stable}" >/dev/null 2>&1 || true
-pacman-mirrors --fasttrack 5 >/dev/null 2>&1 || log "aviso: pacman-mirrors falhou; a usar a lista da imagem"
+if [[ -n ${DELONIX_MIRROR:-} ]]; then
+    # Escape de emergência: um único mirror escolhido à mão. Serve para quando o
+    # fasttrack não chega, ou para reproduzir um build exactamente como foi.
+    log "mirror forçado: $DELONIX_MIRROR"
+    printf '## DelonixOS — mirror forçado por DELONIX_MIRROR\nServer = %s/stable/$repo/$arch\n' \
+        "$DELONIX_MIRROR" >/etc/pacman.d/mirrorlist
+else
+    log "a escolher mirrors sincronizados (--fasttrack)"
+    pacman-mirrors --api --protocol https --set-branch "${BRANCH:-stable}" >/dev/null 2>&1 || true
+    pacman-mirrors --fasttrack 5 >/dev/null 2>&1 || log "aviso: pacman-mirrors falhou; a usar a lista da imagem"
+fi
 
 # --- 1. dependências ----------------------------------------------------------
 log "a sincronizar pacman e instalar manjaro-tools"
@@ -214,6 +222,69 @@ if [[ ${DELONIX_CLEAN:-0} == 1 ]]; then
 else
     BUILD_ARGS+=(-c)
     log "a reaproveitar os chroots (DELONIX_CLEAN=1 força um build limpo)"
+fi
+
+# --- mirrors DENTRO dos chroots ------------------------------------------------
+# A correcção anterior falhou o alvo e vale a pena dizer porquê: o
+# `pacman-mirrors --fasttrack` acima muda o mirrorlist do CONTENTOR, mas cada
+# chroot do buildiso tem o seu, gerado quando foi criado — 125 servidores sem
+# ranking. Como construímos com `-c` (não limpar), esse ficheiro sobrevive a
+# todos os builds seguintes, com os mirrors atrasados que tinha no primeiro dia.
+#
+# A prova disto foi a data da própria base de dados: o pacman preserva o
+# `Last-Modified` do servidor, e a extra.db dentro do livefs estava datada de
+# 8 de Julho — a data exacta do mirror atrasado, um mês depois.
+CHROOT_BASE=/var/lib/manjaro-tools/buildiso/$EDITION/x86_64
+if [[ -d $CHROOT_BASE ]]; then
+    log "a propagar os mirrors sincronizados para os chroots existentes"
+    for fs in rootfs desktopfs livefs; do
+        [[ -d $CHROOT_BASE/$fs/etc/pacman.d ]] || continue
+        cp /etc/pacman.d/mirrorlist "$CHROOT_BASE/$fs/etc/pacman.d/mirrorlist"
+        # E as bases de dados já descarregadas do mirror mau têm de sair, senão
+        # o pacman considera-as actuais e nunca chega a usar os mirrors novos.
+        rm -f "$CHROOT_BASE/$fs"/var/lib/pacman/sync/{core,extra,multilib}.db
+        log "  $fs: mirrorlist actualizado, dbs antigas removidas"
+    done
+fi
+
+# --- guarda de compatibilidade manjaro-tools ↔ pacotes -------------------------
+# O manjaro-tools invoca binários DENTRO do chroot por caminho absoluto. Se a
+# versão do manjaro-tools e a dos pacotes não corresponderem, o build morre lá à
+# frente com um "No such file or directory" que não aponta para a causa.
+#
+# Aqui perguntamos, ANTES de começar: os binários que o manjaro-tools vai chamar
+# existem em algum pacote que vamos instalar? Custa segundos e substitui uma
+# hora de build seguida de um erro enigmático.
+log "a confirmar que o manjaro-tools e os pacotes falam a mesma língua"
+pacman -Fy >/dev/null 2>&1 || true
+falta_bin=0
+for bin in $(grep -rhoE '/usr/bin/manjaro-[a-z-]+' /usr/lib/manjaro-tools/*.sh 2>/dev/null | sort -u); do
+    if pacman -F "${bin#/}" >/dev/null 2>&1; then
+        log "  ok: $bin ($(pacman -F "${bin#/}" 2>/dev/null | head -1 | awk '{print $1}'))"
+    else
+        log "  ERRO: o manjaro-tools chama $bin e NENHUM pacote o fornece"
+        falta_bin=1
+    fi
+done
+if (( falta_bin )); then
+    cat >&2 <<'AVISO'
+
+  O manjaro-tools instalado espera binários que os pacotes desta branch não
+  trazem. Quase sempre é um mirror atrasado a servir versões antigas: foi
+  exactamente isto que deu, a 2026-08-15,
+
+      chroot: failed to run command '/usr/bin/manjaro-live-setup'
+
+  porque o mirror servia manjaro-live-base de 2024, que instala
+  /usr/bin/manjaro-live, e o manjaro-tools de hoje chama manjaro-live-setup.
+
+  Força um mirror actualizado e apaga a fase live:
+
+      make clean-live
+      DELONIX_MIRROR=https://mirror.alpix.eu/manjaro make iso
+
+AVISO
+    exit 1
 fi
 
 log "buildiso — perfil $PROFILE (edição $EDITION), kernel $KERNEL"
