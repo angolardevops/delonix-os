@@ -132,6 +132,16 @@ Três coisas que se recusa a fazer:
   com `fq`, limites de inotify, zram, delegação de cgroups, drivers de GPU/NPU —
   tudo aplicado antes do primeiro login.
 
+A curadoria é medida, não afirmada. A última auditoria tirou 1,76 GB de peso
+instalado sem perder uma única capacidade: bibliotecas gráficas de 32 bits (que
+existem para o Steam e o Wine), todos os idiomas pré-compilados quando geramos
+os três que usamos, os fundos de série do Plasma que o tema Delonix substitui,
+uma Nerd Font enviada em todas as variantes quando a fonte normal mais um
+ficheiro de símbolos desenha o mesmo, e ferramentas a duplicar outra já
+instalada. Cada remoção está registada com o seu motivo em
+[`packages/blocklist.txt`](packages/blocklist.txt), e o build **falha** se
+alguma voltar.
+
 ---
 
 ## Afinação que já vem feita

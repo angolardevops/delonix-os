@@ -16,7 +16,9 @@
 ##############################################################################
 plasma-desktop
 plasma-workspace
-plasma-workspace-wallpapers
+# `plasma-workspace-wallpapers` fora: 227 MB de fundos de série que o tema
+# Delonix substitui no primeiro arranque. O selector de fundos fica com o nosso
+# e com o que a pessoa lá puser.
 plasma-nm
 plasma-pa
 plasma-systemmonitor
@@ -119,7 +121,8 @@ moreutils
 parallel
 entr
 watchexec
-difftastic
+# `difftastic` fora (126 MB): o `git-delta`, que já está aqui e é o que o
+# .gitconfig usa, resolve o mesmo por 5 MB. A pedido: delonix-toolbox.
 hexyl
 just                    # runner de tarefas por projecto (o Makefile sem as armadilhas)
 procs                   # `ps` legível
@@ -276,7 +279,9 @@ age
 openbao                 # cliente de segredos dinâmicos (fork aberto do Vault)
 gitleaks                # segredos commitados: apanha antes de irem para o remoto
 syft                    # SBOM de imagens e de código — exigido em auditorias
-osv-scanner             # CVEs nas dependências de um projecto, por lockfile
+# `osv-scanner` fora (79 MB): o `trivy fs .` lê os mesmos lockfiles e a mesma
+# base de dados OSV. Ficam o trivy (containers, IaC, segredos, dependências) e
+# o syft (SBOM), que fazem trabalhos mesmo diferentes.
 crane                   # operações em registos OCI sem descarregar a imagem toda
 sops
 step-cli
@@ -535,7 +540,13 @@ antigravity             # [aur] IDE Antigravity
 ##############################################################################
 # 13. Fontes (necessárias para os prompts com ícones e para logs)
 ##############################################################################
-ttf-jetbrains-mono-nerd
+# 233 MB → 10 MB, com o MESMO aspecto. O `ttf-jetbrains-mono-nerd` traz a fonte
+# inteira repatchada em três variantes (Mono/Propo/NL) e todos os pesos. A forma
+# recomendada hoje é a fonte normal + o ficheiro só de símbolos: o fontconfig
+# recorre a este para os glifos que faltam, que é exactamente o que o starship,
+# o k9s e o lazygit desenham.
+ttf-jetbrains-mono
+ttf-nerd-fonts-symbols-mono
 ttf-fira-code
 noto-fonts
 noto-fonts-emoji

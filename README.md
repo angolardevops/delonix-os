@@ -131,6 +131,15 @@ Three things it refuses to do:
   limits, zram, cgroup delegation, GPU/NPU drivers — all applied before you
   first log in.
 
+Curation is measured rather than asserted. The last audit removed 1.76 GB of
+installed weight without losing a single capability: 32-bit graphics libraries
+(they exist for Steam and Wine), every pregenerated locale when we build the
+three we use, stock Plasma wallpapers the Delonix theme replaces, a Nerd Font
+shipped in every variant when the plain font plus a symbols file renders the
+same, and tools duplicating one already installed. Each removal is recorded with
+its reason in [`packages/blocklist.txt`](packages/blocklist.txt), and the build
+**fails** if one comes back.
+
 ---
 
 ## Tuning that comes done

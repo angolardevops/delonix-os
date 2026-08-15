@@ -125,10 +125,14 @@ ca-certificates-mozilla
 
 ## --- utilitários de consola indispensáveis --------------------------------------------
 bash-completion
-glibc-locales
+# `glibc-locales` fora (233 MB): traz TODOS os idiomas pré-compilados. Nós
+# geramos exactamente três — pt_AO, pt_PT e en_US — pelo `generate-locale`, que
+# o gancho 97-delonix-locale.hook dispara quando o glibc ou o delonix-os-settings
+# são instalados. Ou seja: já corre durante a construção da ISO, não só depois.
 nano
 nano-syntax-highlighting
-micro
+# `micro` fora: editor simples e modeless — que é exactamente o que o `nano`
+# (logo abaixo) já é, e o nano é o que toda a gente tem na memória muscular.
 # NOTA: sem `vi` — saiu dos repositórios e o nano/micro/neovim cobrem o caso.
 less
 which

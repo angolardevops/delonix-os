@@ -105,3 +105,20 @@ virtualbox-guest-utils-nox
 virtualbox                  # o hipervisor em si nunca esteve, fica explícito
 open-vm-tools               # convidado de VMware
 xf86-input-vmmouse          # driver de rato de VM em X11; irrelevante em Wayland
+
+## --- lapidação de 2026-08-15: ~1,5 GB de coisa desnecessária ----------------
+# Nenhum destes foi removido por ser grande. Foram removidos por serem
+# redundantes, legado, ou por existir a mesma função a uma fracção do custo.
+lib32-mesa                  # 32 bits só serve Steam/Wine — nada disso vive aqui
+lib32-vulkan-intel
+lib32-vulkan-radeon
+lib32-nvidia-utils          # 478 MB sozinho, o maior desperdício da lista
+glibc-locales               # todos os idiomas pré-compilados; nós geramos 3
+plasma-workspace-wallpapers # fundos de série que o tema Delonix substitui
+ttf-jetbrains-mono-nerd     # 233 MB; ttf-jetbrains-mono + símbolos dá o mesmo
+difftastic                  # o git-delta já cá está e é o que o gitconfig usa
+osv-scanner                 # o `trivy fs .` lê os mesmos lockfiles e a mesma BD
+micro                       # editor modeless — o nano já é isso
+xf86-video-intel            # a própria Intel recomenda `modesetting` desde 2017
+xf86-video-ati              # só placas pré-GCN (2012)
+xf86-input-evdev            # substituído pelo libinput
