@@ -192,68 +192,242 @@ def sddm(assets: Path, larg=1280, alt=720) -> Image.Image:
 
 
 # ------------------------------------------------------------------- Desktop
-def desktop(assets: Path, larg=1280, alt=720) -> Image.Image:
-    """Aproximado: wallpaper real + painel com o layout que o look-and-feel define."""
-    wall = sorted((assets / "wallpapers/Delonix/contents/images").glob("*.png"))[0]
-    img = Image.open(wall).resize((larg, alt)).convert("RGB")
-    d = ImageDraw.Draw(img, "RGBA")
+# Quatro composições do mesmo desktop, porque "como fica" depende do que estás
+# a fazer: o terminal (onde esta distro vive), um cluster, uma VM, e o
+# laboratório de observabilidade.
 
-    # painel: 44 px em baixo (org.kde.plasma.desktop-layout.js)
+def _fundo(assets: Path, larg: int, alt: int) -> Image.Image:
+    wall = sorted((assets / "wallpapers/Delonix/contents/images").glob("*.png"))[0]
+    return Image.open(wall).resize((larg, alt)).convert("RGB")
+
+
+def _painel(img: Image.Image, assets: Path, activo: int = 0) -> None:
+    """Painel de 44 px em baixo, como o org.kde.plasma.desktop-layout.js define."""
+    larg, alt = img.size
+    d = ImageDraw.Draw(img, "RGBA")
     ph = 44
     d.rectangle([0, alt - ph, larg, alt], fill=(18, 21, 26, 245))
     d.rectangle([0, alt - ph, larg, alt - ph + 1], fill=(38, 42, 49, 255))
 
-    # kickoff com a marca
     logo = Image.open(assets / "plymouth/themes/delonix/logo.png").resize((26, 26))
     img.paste(logo, (10, alt - ph + 9), logo)
 
-    # pager + lançadores (icontasks): dolphin, kitty, firefox, kate
     x = 50
     for i in range(4):
-        cor = (255, 255, 255, 26) if i else (224, 32, 47, 60)
+        cor = (224, 32, 47, 70) if i == activo else (255, 255, 255, 26)
         d.rounded_rectangle([x, alt - ph + 7, x + 30, alt - 7], radius=6, fill=cor)
         x += 36
 
-    # systemmonitor + bandeja + relógio com data ISO
     d.text((larg - 250, alt - ph + 14), "CPU ▁▃▅▂▁", font=fonte("mono", 12), fill=MUTED)
     d.text((larg - 150, alt - ph + 8), "2026-08-15", font=fonte("regular", 12), fill=FG)
     d.text((larg - 150, alt - ph + 24), "09:12", font=fonte("bold", 12), fill=FG)
 
-    # uma janela de terminal, que é onde esta distro vive
-    tw, th = 720, 380
-    tx, ty = 90, 130
-    d.rounded_rectangle([tx, ty, tx + tw, ty + th], radius=8, fill=(13, 15, 18, 246),
-                        outline=(38, 42, 49, 255), width=1)
-    d.rectangle([tx, ty, tx + tw, ty + 28], fill=(22, 25, 30, 255))
-    d.rounded_rectangle([tx, ty, tx + 150, ty + 28], radius=6, fill=RED)
-    d.text((tx + 14, ty + 7), "delonix: zsh", font=fonte("bold", 12), fill=(255, 255, 255))
-    d.text((tx + 175, ty + 7), "2: k9s", font=fonte("regular", 12), fill=MUTED)
 
-    fm = fonte("mono", 13)
-    linhas = [
+def _janela(img: Image.Image, caixa: tuple, titulo: str, abas: list[str] | None = None,
+            fundo=(13, 15, 18, 246)) -> ImageDraw.ImageDraw:
+    """Moldura de janela com a barra de título do Breeze e o acento Delonix."""
+    x, y, w, h = caixa
+    d = ImageDraw.Draw(img, "RGBA")
+    d.rounded_rectangle([x, y, x + w, y + h], radius=8, fill=fundo,
+                        outline=(38, 42, 49, 255), width=1)
+    d.rectangle([x, y, x + w, y + 30], fill=(22, 25, 30, 255))
+    d.rounded_rectangle([x, y, x + 160, y + 30], radius=6, fill=RED)
+    d.text((x + 14, y + 8), titulo, font=fonte("bold", 12), fill=(255, 255, 255))
+    if abas:
+        tx = x + 176
+        for aba in abas:
+            d.text((tx, y + 8), aba, font=fonte("regular", 12), fill=MUTED)
+            tx += len(aba) * 8 + 30
+    # botões da direita (ButtonsOnRight=IAX no kwinrc)
+    for i, cor in enumerate(((139, 144, 153), (139, 144, 153), (224, 32, 47))):
+        d.ellipse([x + w - 26 - i * 22, y + 11, x + w - 18 - i * 22, y + 19], fill=cor)
+    return d
+
+
+def _linhas(d: ImageDraw.ImageDraw, x: int, y: int, linhas: list, f=None, passo: int = 19) -> int:
+    f = f or fonte("mono", 13)
+    for texto, cor in linhas:
+        d.text((x, y), texto, font=f, fill=cor)
+        y += passo
+    return y
+
+
+VERDE = (46, 178, 120)
+AMBAR = (224, 164, 60)
+
+
+def desktop(assets: Path, larg=1280, alt=720) -> Image.Image:
+    """O terminal — é onde esta distro vive."""
+    img = _fundo(assets, larg, alt)
+    d = _janela(img, (90, 130, 720, 380), "delonix: zsh", ["2: k9s", "3: labs"])
+    _linhas(d, 106, 174, [
         (" ~/projectos/delonix-net", MUTED),
         (" main ✔  ☸ prod (delonix-system)", RED),
         ("❯ delonix-doctor", FG),
-        ("  ✓ cgroup v2 unificado", (46, 178, 120)),
-        ("  ✓ controlador delegado: cpu memory pids io", (46, 178, 120)),
-        ("  ✓ subuid/subgid: delonix:100000:65536", (46, 178, 120)),
-        ("  ✓ virtualização aninhada activa", (46, 178, 120)),
-        ("  ✓ NPU visível", (46, 178, 120)),
-        ("  ✓ rede: bbr + fq", (46, 178, 120)),
-        ("  ✓ nvme0n1 usa none", (46, 178, 120)),
-        ("  ! observability a correr (delonix-toolbox lab down)", (224, 164, 60)),
+        ("  ✓ cgroup v2 unificado", VERDE),
+        ("  ✓ controlador delegado: cpu memory pids io", VERDE),
+        ("  ✓ subuid/subgid: delonix:100000:65536", VERDE),
+        ("  ✓ virtualização aninhada activa", VERDE),
+        ("  ✓ NPU visível", VERDE),
+        ("  ✓ rede: bbr + fq", VERDE),
+        ("  ✓ nvme0n1 usa none", VERDE),
+        ("  ! observability a correr (delonix-toolbox lab down)", AMBAR),
         ("", FG),
         ("❯ cargo build --release", FG),
         ("   Compiling delonix-net v0.48.0", MUTED),
-        ("    Finished `release` profile [optimized] in 18.4s", (46, 178, 120)),
+        ("    Finished `release` profile [optimized] in 18.4s", VERDE),
         ("❯ ", FG),
-    ]
-    y = ty + 44
-    for texto, cor in linhas:
-        d.text((tx + 16, y), texto, font=fm, fill=cor)
-        y += 19
-
+    ])
+    _painel(img, assets, activo=1)
     return rodape(img, "montagem: wallpaper e marca reais, painel conforme o layout — não é uma captura")
+
+
+def desktop_k9s(assets: Path, larg=1280, alt=720) -> Image.Image:
+    """Um cluster ao vivo — o ecrã de quem opera Kubernetes."""
+    img = _fundo(assets, larg, alt)
+    x, y, w, h = 70, 110, 900, 440
+    d = _janela(img, (x, y, w, h), "delonix: k9s", ["1: zsh"])
+
+    fm = fonte("mono", 12)
+    # cabeçalho do k9s
+    d.text((x + 16, y + 44), "Context: prod        Cluster: delonix-prod", font=fm, fill=RED)
+    d.text((x + 16, y + 62), "User:    delonix     K9s Rev: v0.50.x", font=fm, fill=MUTED)
+    d.text((x + 16, y + 80), "CPU:     34%         MEM: 61%", font=fm, fill=MUTED)
+    d.text((x + 470, y + 44), "<0> all      <1> default", font=fm, fill=MUTED)
+    d.text((x + 470, y + 62), "<d> describe <l> logs", font=fm, fill=MUTED)
+    d.text((x + 470, y + 80), "<s> shell    <y> yaml", font=fm, fill=MUTED)
+
+    d.rectangle([x + 12, y + 104, x + w - 12, y + 106], fill=(38, 42, 49, 255))
+    d.text((x + 16, y + 114), " Pods(delonix-system)[7]", font=fonte("bold", 12), fill=FG)
+
+    cab = "  NAME                              READY  STATUS     RESTARTS  CPU  MEM   AGE"
+    d.text((x + 16, y + 138), cab, font=fm, fill=(120, 130, 145))
+    pods = [
+        ("  delonix-controller-7c9f4b8d5-2xk4p   1/1   Running          0   12   184   6d", VERDE),
+        ("  delonix-net-agent-h9wqz              1/1   Running          0    8    96   6d", VERDE),
+        ("  delonix-net-agent-p4tvm              1/1   Running          0    9   102   6d", VERDE),
+        ("  ingress-nginx-controller-6b8f9-qq2   1/1   Running          2  145   312  21d", VERDE),
+        ("  postgres-primary-0                   1/1   Running          0   88   974  14d", VERDE),
+        ("  observability-grafana-5d7c8f-x8k2    1/1   Running          0   21   256   3h", VERDE),
+        ("  backup-cron-29154720-mv7bd           0/1   Completed        0    0     0  47m", MUTED),
+    ]
+    yy = y + 158
+    for i, (linha, cor) in enumerate(pods):
+        if i == 0:
+            d.rectangle([x + 12, yy - 3, x + w - 12, yy + 16], fill=(30, 34, 41, 255))
+            d.rectangle([x + 12, yy - 3, x + 15, yy + 16], fill=RED)
+        d.text((x + 16, yy), linha, font=fm, fill=FG if i == 0 else cor)
+        yy += 19
+
+    # rodapé de teclas do k9s
+    d.rectangle([x + 12, y + h - 34, x + w - 12, y + h - 32], fill=(38, 42, 49, 255))
+    d.text((x + 16, y + h - 26), "<ctrl-d> delete  <e> edit  <?> help  <:q> quit",
+           font=fm, fill=MUTED)
+
+    _painel(img, assets, activo=1)
+    return rodape(img, "montagem (k9s ilustrativo) — o desenho final é do terminal, não é uma captura")
+
+
+def desktop_virt(assets: Path, larg=1280, alt=720) -> Image.Image:
+    """Uma VM a correr — KVM/libvirt com nested activo."""
+    img = _fundo(assets, larg, alt)
+
+    # virt-manager: lista de VMs
+    x, y, w, h = 60, 120, 470, 330
+    d = _janela(img, (x, y, w, h), "Gestor de VMs", None, fundo=(22, 25, 30, 250))
+    d.text((x + 16, y + 44), "QEMU/KVM — qemu:///system", font=fonte("bold", 12), fill=FG)
+    d.text((x + 16, y + 64), "NOME                 ESTADO      CPU     MEMÓRIA",
+           font=fonte("mono", 11), fill=(120, 130, 145))
+    vms = [
+        ("dks-control-plane    A correr    18%     4,0 GiB", VERDE, True),
+        ("dks-worker-1         A correr     7%     2,0 GiB", VERDE, False),
+        ("dks-worker-2         A correr     9%     2,0 GiB", VERDE, False),
+        ("win11-atestacao      Suspensa     0%     8,0 GiB", AMBAR, False),
+        ("ubuntu-24.04-base    Desligada    —      2,0 GiB", MUTED, False),
+    ]
+    yy = y + 88
+    for texto, cor, sel in vms:
+        if sel:
+            d.rectangle([x + 12, yy - 4, x + w - 12, yy + 16], fill=(30, 34, 41, 255))
+            d.rectangle([x + 12, yy - 4, x + 15, yy + 16], fill=RED)
+        d.ellipse([x + 22, yy + 4, x + 30, yy + 12], fill=cor)
+        d.text((x + 38, yy), texto, font=fonte("mono", 11), fill=FG if sel else MUTED)
+        yy += 26
+    d.text((x + 16, y + h - 40), "nested: Y   ·   /dev/kvm: ok   ·   rede default: activa",
+           font=fonte("mono", 11), fill=VERDE)
+
+    # consola da VM seleccionada
+    cx, cy, cw, ch = 560, 150, 640, 380
+    d2 = _janela(img, (cx, cy, cw, ch), "dks-control-plane", ["consola"])
+    _linhas(d2, cx + 16, cy + 48, [
+        ("Ubuntu 24.04.3 LTS dks-control-plane tty1", MUTED),
+        ("", FG),
+        ("delonix@dks-control-plane:~$ kubectl get nodes", FG),
+        ("NAME                STATUS   ROLES           AGE   VERSION", (120, 130, 145)),
+        ("dks-control-plane   Ready    control-plane   9m    v1.34.1", VERDE),
+        ("dks-worker-1        Ready    <none>          7m    v1.34.1", VERDE),
+        ("dks-worker-2        Ready    <none>          7m    v1.34.1", VERDE),
+        ("", FG),
+        ("delonix@dks-control-plane:~$ lscpu | grep -i hypervisor", FG),
+        ("Hypervisor vendor:      KVM", VERDE),
+        ("", FG),
+        ("delonix@dks-control-plane:~$ ls /dev/kvm", FG),
+        ("/dev/kvm", VERDE),
+        ("", FG),
+        ("delonix@dks-control-plane:~$ ", FG),
+    ], f=fonte("mono", 12), passo=20)
+
+    _painel(img, assets, activo=3)
+    return rodape(img, "montagem (virt-manager ilustrativo) — não é uma captura de ecrã")
+
+
+def desktop_grafana(assets: Path, larg=1280, alt=720) -> Image.Image:
+    """O laboratório de observabilidade, no browser."""
+    img = _fundo(assets, larg, alt)
+    x, y, w, h = 70, 100, 1000, 470
+    d = _janela(img, (x, y, w, h), "Firefox", ["Grafana — DelonixOS"], fundo=(17, 18, 23, 250))
+
+    # barra de endereço
+    d.rounded_rectangle([x + 16, y + 40, x + w - 16, y + 66], radius=6,
+                        fill=(13, 15, 18, 255), outline=(38, 42, 49, 255))
+    d.text((x + 30, y + 47), "localhost:3000/d/delonix/posto-de-trabalho",
+           font=fonte("mono", 12), fill=MUTED)
+
+    d.text((x + 20, y + 82), "DelonixOS — posto de trabalho", font=fonte("bold", 14), fill=FG)
+    d.text((x + w - 190, y + 84), "últimos 30 min  ·  ⟳ 10s", font=fonte("regular", 11), fill=MUTED)
+
+    import math
+    paineis = [
+        ("CPU por núcleo", "34%", VERDE, 0.34),
+        ("Memória", "61%  (19,4 / 31 GiB)", AMBAR, 0.61),
+        ("Pressão de I/O (PSI)", "4,2%", VERDE, 0.12),
+        ("Rede — eth0", "↓ 41 Mb/s  ↑ 6 Mb/s", VERDE, 0.42),
+        ("Containers rootless", "11", VERDE, 0.3),
+        ("Temperatura CPU", "58 °C", VERDE, 0.45),
+    ]
+    pw, ph = (w - 60) // 3, 150
+    for i, (titulo, valor, cor, nivel) in enumerate(paineis):
+        px = x + 20 + (i % 3) * (pw + 10)
+        py = y + 108 + (i // 3) * (ph + 12)
+        d.rounded_rectangle([px, py, px + pw, py + ph], radius=6,
+                            fill=(24, 27, 31, 255), outline=(38, 42, 49, 255))
+        d.text((px + 12, py + 10), titulo, font=fonte("regular", 11), fill=MUTED)
+        d.text((px + 12, py + 30), valor, font=fonte("bold", 18), fill=FG)
+
+        # sparkline: determinista, para a imagem ser reprodutível
+        base_y = py + ph - 16
+        altura = ph - 76
+        pontos = []
+        for k in range(0, pw - 24, 4):
+            t = k / max(1, pw - 24)
+            v = nivel + 0.16 * math.sin(t * 9 + i) + 0.06 * math.sin(t * 23 + i * 2)
+            v = max(0.02, min(0.97, v))
+            pontos.append((px + 12 + k, base_y - v * altura))
+        d.line(pontos, fill=cor, width=2, joint="curve")
+        d.line([(px + 12, base_y), (px + pw - 12, base_y)], fill=(38, 42, 49, 255))
+
+    _painel(img, assets, activo=2)
+    return rodape(img, "montagem (dashboard ilustrativa) — o Grafana real vem do `lab up observability`")
 
 
 def main() -> None:
@@ -269,7 +443,9 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     for nome, fn in (("1-grub", grub), ("2-plymouth", plymouth),
-                     ("3-sddm", sddm), ("4-desktop", desktop)):
+                     ("3-sddm", sddm), ("4-desktop", desktop),
+                     ("5-k9s", desktop_k9s), ("6-vms", desktop_virt),
+                     ("7-grafana", desktop_grafana)):
         img = fn(assets)
         destino = out / f"delonixos-{nome}.png"
         img.save(destino)

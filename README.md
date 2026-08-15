@@ -76,7 +76,9 @@ that is where you look. Full reference: **[CLI documentation](docs/en/cli.md)**.
 ## What it looks like
 
 > These are **composites built from the real assets**, not screenshots — the
-> first ISO has not been built yet. GRUB and Plymouth are faithful (the
+> first ISO has not been built yet. Window contents (k9s, virt-manager, the
+> Grafana dashboard) are illustrative: the numbers are made up, the tools and
+> the layout are the ones that ship. GRUB and Plymouth are faithful (the
 > positions come straight from the theme files); SDDM and the desktop use the
 > values from `Main.qml` and the panel layout, but the final drawing is Qt's
 > and Plasma's. Regenerate them with `make preview`.
@@ -88,6 +90,14 @@ that is where you look. Full reference: **[CLI documentation](docs/en/cli.md)**.
 | Login (SDDM) | Desktop |
 |---|---|
 | ![SDDM](docs/img/delonixos-3-sddm.png) | ![Desktop](docs/img/delonixos-4-desktop.png) |
+
+| Kubernetes (`k9s`) | Local VMs (KVM/libvirt, nested) |
+|---|---|
+| ![k9s](docs/img/delonixos-5-k9s.png) | ![VMs](docs/img/delonixos-6-vms.png) |
+
+| Observability lab (`lab up observability`) | |
+|---|---|
+| ![Grafana](docs/img/delonixos-7-grafana.png) | |
 
 Making these paid for itself immediately: rendering the GRUB theme at 720p —
 the resolution a VM boots at — showed the menu overlapping the tagline. The

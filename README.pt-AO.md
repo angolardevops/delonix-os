@@ -76,7 +76,9 @@ fica em disco, legível e comparável com `diff`, porque quando um build corre m
 ## Como fica
 
 > Estas são **montagens a partir dos assets reais**, não capturas de ecrã — a
-> primeira ISO ainda não foi construída. O GRUB e o Plymouth são fiéis (as
+> primeira ISO ainda não foi construída. O conteúdo das janelas (k9s,
+> virt-manager, a dashboard do Grafana) é ilustrativo: os números são
+> inventados, as ferramentas e a disposição é que são as que vão na imagem. O GRUB e o Plymouth são fiéis (as
 > posições vêm dos próprios ficheiros de tema); o SDDM e o desktop usam os
 > valores do `Main.qml` e do layout do painel, mas quem desenha no fim é o Qt e
 > o Plasma. Regeneras com `make preview`.
@@ -88,6 +90,14 @@ fica em disco, legível e comparável com `diff`, porque quando um build corre m
 | Login (SDDM) | Desktop |
 |---|---|
 | ![SDDM](docs/img/delonixos-3-sddm.png) | ![Desktop](docs/img/delonixos-4-desktop.png) |
+
+| Kubernetes (`k9s`) | VMs locais (KVM/libvirt, nested) |
+|---|---|
+| ![k9s](docs/img/delonixos-5-k9s.png) | ![VMs](docs/img/delonixos-6-vms.png) |
+
+| Laboratório de observabilidade (`lab up observability`) | |
+|---|---|
+| ![Grafana](docs/img/delonixos-7-grafana.png) | |
 
 Fazer isto pagou-se logo: ao desenhar o tema do GRUB a 720p — a resolução com
 que uma VM arranca — vi o menu por cima do subtítulo. As posições misturavam
