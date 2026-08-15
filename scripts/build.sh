@@ -52,7 +52,31 @@ fi
 # Com podman isso significa `sudo podman`, não rootless.
 RUN=("$ENGINE")
 if [[ $ENGINE == podman && $(id -u) -ne 0 ]]; then
-    echo "→ buildiso precisa de privilégios reais; a usar 'sudo podman'"
+    # Falhar AQUI, no primeiro segundo, e não daqui a dois minutos com um erro
+    # em bruto do sudo. É o mesmo princípio do preflight: o que vai correr mal
+    # descobre-se antes de gastar tempo, não a meio.
+    if ! sudo -n true 2>/dev/null; then
+        if [[ ! -t 0 ]]; then
+            cat >&2 <<'AVISO'
+
+  Este build precisa da tua palavra-passe e não há terminal para a pedir.
+
+  O `buildiso` monta loop devices e cria o squashfs — são privilégios reais,
+  não é rootless. Por isso corre `sudo podman`, e o sudo precisa de te
+  perguntar.
+
+  Corre isto NUM TERMINAL, à mão:
+
+      make iso
+
+  (Ou, se preferires aquecer o sudo primeiro:  sudo -v && make iso)
+
+AVISO
+            exit 1
+        fi
+        echo "→ buildiso precisa de privilégios reais; o sudo vai pedir a palavra-passe"
+    fi
+    echo "→ a usar 'sudo podman'"
     RUN=(sudo podman)
 fi
 

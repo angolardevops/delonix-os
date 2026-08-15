@@ -225,6 +225,11 @@ Manjaro container — you do not need Manjaro installed.
 make iso
 ```
 
+Run it **in a terminal**. `buildiso` mounts loop devices and builds the squashfs,
+so it needs real privileges — the container runs under `sudo podman`, and sudo
+has to be able to ask you for the password. The script checks this in its first
+second rather than failing two minutes in.
+
 Requirements: `podman` (with `sudo`) or `docker`, ~35 GB free, 60–120 min.
 On an Arch/Manjaro host: `sudo ./scripts/in-container-build.sh`.
 

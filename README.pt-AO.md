@@ -234,6 +234,11 @@ contentor Manjaro privilegiado — não é preciso ter Manjaro instalado.
 make iso
 ```
 
+Corre **num terminal**. O `buildiso` monta loop devices e cria o squashfs, ou
+seja, precisa de privilégios reais — o contentor corre com `sudo podman`, e o
+sudo tem de te poder pedir a palavra-passe. O script confirma isso no primeiro
+segundo, em vez de falhar dois minutos depois.
+
 Requisitos: `podman` (com `sudo`) ou `docker`, ~35 GB livres, 60–120 min.
 Num host Arch/Manjaro: `sudo ./scripts/in-container-build.sh`.
 
