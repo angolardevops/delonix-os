@@ -36,6 +36,8 @@ declare -A DESC=(
     [delonix]="Delonix Runtime + delonixctl (motor da casa)"
     [ai]="Claude Code + Antigravity (reinstalar/actualizar)"
     [ai-local]="Ollama: modelos locais na GPU/NPU já activadas"
+    [docs]="Hugo e Zola: portais e sites estáticos (o mkdocs já vem)"
+    [security-audit]="rkhunter + clamav: varredura periódica do posto"
 )
 
 declare -A PKGS=(
@@ -55,6 +57,8 @@ declare -A PKGS=(
     [delonix]="__delonix__"
     [ai]="claude-code antigravity"
     [ai-local]="ollama"
+    [docs]="hugo zola"
+    [security-audit]="rkhunter clamav"
 )
 
 # --- helpers -----------------------------------------------------------------

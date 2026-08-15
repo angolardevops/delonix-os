@@ -15,8 +15,10 @@ curl -fsSL https://raw.githubusercontent.com/angolardevops/delonix-os/main/insta
 Installs to `~/.local/bin` (no sudo). For a system-wide install:
 `curl … | sudo PREFIX=/usr/local sh`.
 
-The only hard requirement is **Python 3.8+**. PyYAML is used when present; when
-it is not, a built-in reader handles the inventory format.
+The only hard requirement is **Python 3.8+ with the standard library** —
+Debian's `python3-minimal` is not enough (it does not even ship `json`). PyYAML
+is used when present; when it is not, a built-in reader handles the inventory
+format.
 
 ## The three things it does
 
@@ -35,6 +37,32 @@ for your package manager, not a generic "install podman":
 | Fedora · RHEL · Rocky · Alma | `sudo dnf install -y podman python3` | no — container |
 | openSUSE | `sudo zypper install -y podman python3` | no — container |
 | Arch · Manjaro · EndeavourOS | `sudo pacman -S --needed manjaro-tools-iso git rsync python python-pillow` | **yes** |
+
+### Versions
+
+```bash
+delonixos distros                      # what is supported, and what the default resolves to
+delonixos build --from ubuntu          # latest LTS (24.04)
+delonixos build --from ubuntu:22.04    # a specific LTS
+delonixos build --from fedora          # the newest (43)
+delonixos build --from zorin:17        # Zorin 17 = Ubuntu 22.04 base
+```
+
+Two policies, because the families do not behave the same way:
+
+| Policy | Distros | With no version | Refuses |
+|---|---|---|---|
+| **`lts`** | Ubuntu, Zorin, Mint, Pop!_OS | the **latest LTS** | non-LTS versions |
+| **`latest`** | Fedora, Debian, RHEL, openSUSE, Arch, Manjaro | the **newest** | — |
+
+Ubuntu is LTS-only on purpose: interim releases live nine months, and a
+workstation that builds images should not be jumping releases twice a year.
+
+**Zorin** is Ubuntu underneath, and that base is what matters for packages —
+Zorin 18 sits on Ubuntu 24.04, Zorin 17 on 22.04. `doctor` says so explicitly.
+
+An out-of-support version is not refused, but it **is** flagged: it still
+builds, and you learn you are running without security fixes.
 
 It also checks disk (35 GB), RAM, CPU count and whether you have real root — the
 `buildiso` needs it to mount loop devices, and finding that out at minute 40 is
@@ -161,11 +189,42 @@ The rendered profile is left on disk (`build/profile/`) on purpose — it is
 readable, diffable, and it is exactly what `buildiso` consumed. When something
 goes wrong, that directory is where you look.
 
+## Is it actually tested?
+
+Yes, and you can repeat it:
+
+```bash
+make distro-test                          # the default set
+./scripts/test-distros.sh fedora:42       # or a specific one
+./scripts/test-distros.sh --all
+```
+
+It runs the full path — `doctor` → `init` → `validate` → `render` — **inside a
+container of each distro**, and checks the rendered profile exists at the end.
+Not a claim in a README: the command actually running on a real Ubuntu 22.04.
+
+Two things this test taught, neither of them about `delonixos`:
+
+- Inside a rootless container the host resolver (`systemd-resolved` on
+  127.0.0.53) is unreachable — without an explicit `--dns`, no distro installs
+  anything.
+- DNS returns AAAA records but there is no IPv6 route, so `apt` resolves and
+  then hangs. It needs `ForceIPv4`.
+
+A slow mirror is reported as **"not verified (network)"**, not as a failure:
+calling it a product failure when the network is what failed would misrepresent
+what was tested.
+
+What this does **not** cover: the ISO build itself — that needs root, loop
+devices and 35 GB. But that step runs in the same Manjaro container on every
+host; what varies between distros is exactly what is tested here.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `delonixos doctor` | prerequisites for this host |
+| `delonixos distros` | supported distros and versions |
 | `delonixos init [path]` | create a project with an inventory |
 | `delonixos validate -f f.yaml` | check the inventory without building |
 | `delonixos render -f f.yaml` | inventory → manjaro-tools profile, without building |

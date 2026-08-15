@@ -43,8 +43,19 @@ from it:
 curl -fsSL https://raw.githubusercontent.com/angolardevops/delonix-os/main/install.sh | sh
 
 delonixos doctor                     # can this machine build? exact commands for your package manager
-delonixos build --from ubuntu        # ubuntu · debian · fedora · opensuse · arch · manjaro
+delonixos distros                    # what is supported, and what each default resolves to
+delonixos build --from ubuntu        # latest LTS
+delonixos build --from ubuntu:22.04  # or a specific one
 ```
+
+| Family | Distros | With no version |
+|---|---|---|
+| LTS only | Ubuntu, **Zorin**, Mint, Pop!_OS | latest LTS (24.04) |
+| Latest | Fedora, Debian, RHEL, Rocky, Alma, openSUSE | newest release |
+| Native build | Arch, Manjaro, EndeavourOS | no container needed |
+
+Zorin is Ubuntu underneath — 18 on 24.04, 17 on 22.04 — and `doctor` says so.
+An out-of-support release still builds, but you are told.
 
 Or describe your own image in an inventory and build that instead:
 

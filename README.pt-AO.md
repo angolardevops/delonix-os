@@ -43,8 +43,19 @@ própria** distro a partir dele:
 curl -fsSL https://raw.githubusercontent.com/angolardevops/delonix-os/main/install.sh | sh
 
 delonixos doctor                     # esta máquina consegue? comandos exactos do teu gestor de pacotes
-delonixos build --from ubuntu        # ubuntu · debian · fedora · opensuse · arch · manjaro
+delonixos distros                    # o que é suportado, e o que cada omissão resolve
+delonixos build --from ubuntu        # última LTS
+delonixos build --from ubuntu:22.04  # ou uma específica
 ```
+
+| Família | Distros | Sem versão |
+|---|---|---|
+| Só LTS | Ubuntu, **Zorin**, Mint, Pop!_OS | última LTS (24.04) |
+| Mais recente | Fedora, Debian, RHEL, Rocky, Alma, openSUSE | a última versão |
+| Build nativo | Arch, Manjaro, EndeavourOS | sem contentor |
+
+O Zorin é Ubuntu por baixo — o 18 no 24.04, o 17 no 22.04 — e o `doctor` di-lo.
+Uma versão fora de suporte constrói na mesma, mas és avisado.
 
 Ou descreve a tua imagem num inventário e constrói essa:
 

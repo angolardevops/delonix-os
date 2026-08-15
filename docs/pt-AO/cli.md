@@ -15,8 +15,10 @@ curl -fsSL https://raw.githubusercontent.com/angolardevops/delonix-os/main/insta
 Instala em `~/.local/bin` (sem sudo). Para instalar no sistema:
 `curl … | sudo PREFIX=/usr/local sh`.
 
-O único requisito rígido é **Python 3.8+**. O PyYAML é usado quando existe;
-quando não existe, um leitor interno trata do formato do inventário.
+O único requisito rígido é **Python 3.8+ com a biblioteca padrão** — o
+`python3-minimal` do Debian não chega (nem sequer traz o módulo `json`). O
+PyYAML é usado quando existe; quando não existe, um leitor interno trata do
+formato do inventário.
 
 ## As três coisas que faz
 
@@ -35,6 +37,33 @@ gestor de pacotes, em vez de um genérico "instala o podman":
 | Fedora · RHEL · Rocky · Alma | `sudo dnf install -y podman python3` | não — contentor |
 | openSUSE | `sudo zypper install -y podman python3` | não — contentor |
 | Arch · Manjaro · EndeavourOS | `sudo pacman -S --needed manjaro-tools-iso git rsync python python-pillow` | **sim** |
+
+### Versões
+
+```bash
+delonixos distros                      # o que é suportado, e o que fica por omissão
+delonixos build --from ubuntu          # última LTS (24.04)
+delonixos build --from ubuntu:22.04    # LTS específica
+delonixos build --from fedora          # a mais recente (43)
+delonixos build --from zorin:17        # Zorin 17 = base Ubuntu 22.04
+```
+
+Duas políticas, porque as famílias não se comportam da mesma maneira:
+
+| Política | Distros | Sem versão | Recusa |
+|---|---|---|---|
+| **`lts`** | Ubuntu, Zorin, Mint, Pop!_OS | a **última LTS** | versões não-LTS |
+| **`latest`** | Fedora, Debian, RHEL, openSUSE, Arch, Manjaro | a **mais recente** | — |
+
+O Ubuntu só é suportado em LTS de propósito: as intermédias têm nove meses de
+vida, e uma máquina de trabalho que constrói imagens não deve estar a saltar de
+versão duas vezes por ano.
+
+O **Zorin** é Ubuntu por baixo, e é a base que conta para os pacotes — o Zorin
+18 assenta no Ubuntu 24.04 e o 17 no 22.04. O `doctor` diz isso explicitamente.
+
+Uma versão fora de suporte não é recusada, mas é **avisada**: continua a
+construir, e ficas a saber que estás sem correcções de segurança.
 
 Verifica também disco (35 GB), RAM, número de CPUs e se tens root a sério — o
 `buildiso` precisa dele para montar loop devices, e descobrir isso ao minuto 40
@@ -161,11 +190,42 @@ O perfil traduzido fica em disco (`build/profile/`) de propósito — é legíve
 dá para fazer `diff`, e é exactamente o que o `buildiso` consumiu. Quando algo
 corre mal, é aí que se olha.
 
+## Está mesmo testado?
+
+Sim, e dá para repetires:
+
+```bash
+make distro-test                          # o conjunto por omissão
+./scripts/test-distros.sh fedora:42       # ou uma específica
+./scripts/test-distros.sh --all
+```
+
+Corre o caminho completo — `doctor` → `init` → `validate` → `render` — **dentro
+de um contentor de cada distro**, e confirma que o perfil gerado existe no fim.
+Não é uma afirmação no README: é o comando a correr num Ubuntu 22.04 a sério.
+
+Duas coisas que este teste aprendeu, e que não são do `delonixos`:
+
+- Dentro de um contentor rootless o DNS do host (`systemd-resolved` em
+  127.0.0.53) não é alcançável — sem `--dns` explícito, nenhuma distro instala
+  nada.
+- O DNS devolve AAAA mas não há rota IPv6, por isso o `apt` resolve e depois
+  fica pendurado. Precisa de `ForceIPv4`.
+
+Um mirror lento é reportado como **"não verificado (rede)"** e não como falha:
+dizer que o produto falhou quando o que falhou foi a rede seria mentir sobre o
+que foi testado.
+
+O que este teste **não** cobre: o build da ISO em si — precisa de root, loop
+devices e 35 GB. Mas esse passo corre no mesmo contentor Manjaro em todos os
+hosts; o que varia entre distros é exactamente o que aqui se testa.
+
 ## Comandos
 
 | Comando | O que faz |
 |---|---|
 | `delonixos doctor` | pré-requisitos deste host |
+| `delonixos distros` | distros e versões suportadas |
 | `delonixos init [caminho]` | cria um projecto com inventário |
 | `delonixos validate -f f.yaml` | valida o inventário sem construir |
 | `delonixos render -f f.yaml` | inventário → perfil manjaro-tools, sem construir |

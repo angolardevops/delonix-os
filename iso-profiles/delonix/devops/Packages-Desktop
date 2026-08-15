@@ -244,6 +244,7 @@ cue
 nmap
 tcpdump
 termshark
+ngrep                   # grep no fio: ver o payload sem abrir o Wireshark
 mtr
 iperf3
 socat
@@ -293,6 +294,7 @@ lynis
 # transformam-nas em números — antes de prometer capacidade a alguém.
 fio                     # I/O real do disco, com o padrão que interessa
 stress-ng               # levar CPU/memória/I-O ao limite de propósito
+sysbench                # o mesmo para uma base de dados, antes de prometer capacidade
 atop                    # o único que responde a "o que se passou há 10 minutos"
 
 ##############################################################################
@@ -301,7 +303,8 @@ atop                    # o único que responde a "o que se passou há 10 minuto
 asciinema               # gravar uma sessão de terminal para um post-mortem
 vhs                     # transformar um script em GIF: documentação que não envelhece
 mkdocs                  # portal interno de documentação, com o mesmo git
-graphviz                # grafos de dependências (pactree, plantuml, muitos outros)
+graphviz                # grafos de dependências (pactree e companhia)
+imagemagick             # recortar/anotar capturas para um post-mortem, em script
 python-cookiecutter     # caminhos dourados: gerar um serviço novo a partir de um molde
 
 ##############################################################################

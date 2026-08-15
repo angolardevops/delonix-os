@@ -46,6 +46,9 @@ def bad(msg):   print(f"  {RED}✗{RST} {msg}")
 def warn(msg):  print(f"  {YLW}!{RST} {msg}")
 def info(msg):  print(f"{BLD}→{RST} {msg}")
 def die(msg, code=1):
+    # Esvaziar o stdout primeiro: sem isto o erro (stderr, sem buffer) aparece
+    # ANTES do relatório quando a saída é canalizada — e lê-se ao contrário.
+    sys.stdout.flush()
     print(f"{RED}✗{RST} {msg}", file=sys.stderr)
     sys.exit(code)
 
@@ -53,41 +56,182 @@ def die(msg, code=1):
 # ------------------------------------------------------------------ host distro
 # Cada família tem o seu gestor de pacotes e o seu nome para as mesmas coisas.
 # O objectivo é dar o comando exacto a copiar, não "instala o podman".
-HOSTS = {
-    "ubuntu":   {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
-                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
-    "debian":   {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
-                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
-    "linuxmint": {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
-                  "pkgs": "podman uidmap slirp4netns python3", "native": False},
-    "zorin":    {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
-                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
-    "pop":      {"family": "debian", "install": "sudo apt-get install -y {pkgs}",
-                 "pkgs": "podman uidmap slirp4netns python3", "native": False},
-    "fedora":   {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
-                 "pkgs": "podman python3", "native": False},
-    "rhel":     {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
-                 "pkgs": "podman python3", "native": False},
-    "rocky":    {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
-                 "pkgs": "podman python3", "native": False},
-    "almalinux": {"family": "fedora", "install": "sudo dnf install -y {pkgs}",
-                  "pkgs": "podman python3", "native": False},
-    "opensuse-tumbleweed": {"family": "suse", "install": "sudo zypper install -y {pkgs}",
-                            "pkgs": "podman python3", "native": False},
-    "opensuse-leap": {"family": "suse", "install": "sudo zypper install -y {pkgs}",
-                      "pkgs": "podman python3", "native": False},
-    # Nestes dois o build pode correr sem contentor — já são a família certa.
-    "arch":     {"family": "arch", "install": "sudo pacman -S --needed {pkgs}",
-                 "pkgs": "manjaro-tools-iso git rsync python python-pillow", "native": True},
-    "manjaro":  {"family": "arch", "install": "sudo pacman -S --needed {pkgs}",
-                 "pkgs": "manjaro-tools-iso git rsync python python-pillow", "native": True},
-    "endeavouros": {"family": "arch", "install": "sudo pacman -S --needed {pkgs}",
-                    "pkgs": "manjaro-tools-iso git rsync python python-pillow", "native": True},
+#
+# A versão importa por dois motivos: o podman antigo do Ubuntu 20.04 não faz o
+# que precisamos, e uma distro fora de suporte não recebe correcções. Por isso:
+#
+#   política `lts`    (Ubuntu, Zorin) — só versões LTS. Sem versão → a última LTS.
+#   política `latest` (Fedora, Debian, Arch…) — sem versão → a mais recente.
+#
+# `--from ubuntu` e `--from ubuntu:22.04` são ambos válidos.
+DISTROS = {
+    "ubuntu": {
+        "family": "debian", "policy": "lts",
+        "install": "sudo apt-get install -y {pkgs}",
+        "pkgs": "podman uidmap slirp4netns python3",
+        "image": "docker.io/library/ubuntu:{version}",
+        "native": False,
+        "versions": {
+            "24.04": {"lts": True,  "codename": "noble",  "eol": "2029-04"},
+            "22.04": {"lts": True,  "codename": "jammy",  "eol": "2027-04"},
+            "20.04": {"lts": True,  "codename": "focal",  "eol": "2025-04"},
+        },
+    },
+    "zorin": {
+        # O Zorin é Ubuntu por baixo — e é o que corre na máquina onde isto foi
+        # escrito. A versão que interessa para os pacotes é a do Ubuntu base.
+        "family": "debian", "policy": "lts", "base": "ubuntu",
+        "install": "sudo apt-get install -y {pkgs}",
+        "pkgs": "podman uidmap slirp4netns python3",
+        "image": "docker.io/library/ubuntu:{version}",   # não há imagem oficial do Zorin
+        "native": False,
+        "versions": {
+            "18": {"lts": True, "base_version": "24.04", "codename": "noble"},
+            "17": {"lts": True, "base_version": "22.04", "codename": "jammy"},
+        },
+    },
+    "debian": {
+        "family": "debian", "policy": "latest",
+        "install": "sudo apt-get install -y {pkgs}",
+        "pkgs": "podman uidmap slirp4netns python3",
+        "image": "docker.io/library/debian:{version}",
+        "native": False,
+        "versions": {"13": {"codename": "trixie"}, "12": {"codename": "bookworm"}},
+    },
+    "linuxmint": {
+        "family": "debian", "policy": "lts", "base": "ubuntu",
+        "install": "sudo apt-get install -y {pkgs}",
+        "pkgs": "podman uidmap slirp4netns python3",
+        "image": "docker.io/library/ubuntu:{version}", "native": False,
+        "versions": {"22": {"lts": True, "base_version": "24.04"},
+                     "21": {"lts": True, "base_version": "22.04"}},
+    },
+    "pop": {
+        "family": "debian", "policy": "lts", "base": "ubuntu",
+        "install": "sudo apt-get install -y {pkgs}",
+        "pkgs": "podman uidmap slirp4netns python3",
+        "image": "docker.io/library/ubuntu:{version}", "native": False,
+        "versions": {"24.04": {"lts": True}, "22.04": {"lts": True}},
+    },
+    "fedora": {
+        "family": "fedora", "policy": "latest",
+        "install": "sudo dnf install -y {pkgs}",
+        "pkgs": "podman python3",
+        "image": "registry.fedoraproject.org/fedora:{version}",
+        "native": False,
+        "versions": {"43": {}, "42": {}, "41": {}},
+    },
+    "rhel": {
+        "family": "fedora", "policy": "latest",
+        "install": "sudo dnf install -y {pkgs}", "pkgs": "podman python3",
+        "image": "registry.access.redhat.com/ubi9/ubi:{version}", "native": False,
+        "versions": {"9": {}, "10": {}},
+    },
+    "rocky": {
+        "family": "fedora", "policy": "latest",
+        "install": "sudo dnf install -y {pkgs}", "pkgs": "podman python3",
+        "image": "docker.io/library/rockylinux:{version}", "native": False,
+        "versions": {"9": {}},
+    },
+    "almalinux": {
+        "family": "fedora", "policy": "latest",
+        "install": "sudo dnf install -y {pkgs}", "pkgs": "podman python3",
+        "image": "docker.io/library/almalinux:{version}", "native": False,
+        "versions": {"9": {}, "10": {}},
+    },
+    "opensuse-tumbleweed": {
+        "family": "suse", "policy": "latest",
+        "install": "sudo zypper install -y {pkgs}", "pkgs": "podman python3",
+        "image": "registry.opensuse.org/opensuse/tumbleweed:{version}", "native": False,
+        "versions": {"latest": {}},
+    },
+    "opensuse-leap": {
+        "family": "suse", "policy": "latest",
+        "install": "sudo zypper install -y {pkgs}", "pkgs": "podman python3",
+        "image": "registry.opensuse.org/opensuse/leap:{version}", "native": False,
+        "versions": {"15.6": {}, "15.5": {}},
+    },
+    # Nestes o build pode correr sem contentor — já são a família certa.
+    "arch": {
+        "family": "arch", "policy": "latest",
+        "install": "sudo pacman -S --needed {pkgs}",
+        "pkgs": "manjaro-tools-iso git rsync python python-pillow",
+        "image": "docker.io/library/archlinux:{version}", "native": True,
+        "versions": {"latest": {}},
+    },
+    "manjaro": {
+        "family": "arch", "policy": "latest",
+        "install": "sudo pacman -S --needed {pkgs}",
+        "pkgs": "manjaro-tools-iso git rsync python python-pillow",
+        "image": "docker.io/manjarolinux/base:{version}", "native": True,
+        "versions": {"latest": {}},
+    },
+    "endeavouros": {
+        "family": "arch", "policy": "latest", "base": "arch",
+        "install": "sudo pacman -S --needed {pkgs}",
+        "pkgs": "manjaro-tools-iso git rsync python python-pillow",
+        "image": "docker.io/library/archlinux:{version}", "native": True,
+        "versions": {"latest": {}},
+    },
 }
+# Nomes alternativos que aparecem no /etc/os-release
+ALIASES = {"zorinos": "zorin", "pop!_os": "pop", "popos": "pop", "mint": "linuxmint",
+           "opensuse": "opensuse-tumbleweed", "rhel": "rhel", "centos": "rocky"}
+
+
+def _versoes_ordenadas(distro: str) -> list[str]:
+    """Da mais recente para a mais antiga, com ordenação numérica correcta."""
+    def chave(v):
+        return [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", v)]
+    return sorted(DISTROS[distro].get("versions", {}), key=chave, reverse=True)
+
+
+def resolve_alvo(alvo: str) -> tuple[str, str, dict]:
+    """
+    "ubuntu" -> ("ubuntu", "24.04", spec)      última LTS
+    "ubuntu:22.04" -> versão explícita, validada contra a política
+    """
+    nome, _, versao = alvo.partition(":")
+    nome = ALIASES.get(nome.lower(), nome.lower())
+    if nome not in DISTROS:
+        return nome, versao or "", {}
+    spec = DISTROS[nome]
+    versoes = spec.get("versions", {})
+    politica = spec.get("policy", "latest")
+
+    if not versao:
+        if politica == "lts":
+            candidatas = [v for v in _versoes_ordenadas(nome) if versoes[v].get("lts")]
+            versao = candidatas[0] if candidatas else (_versoes_ordenadas(nome) or [""])[0]
+        else:
+            versao = (_versoes_ordenadas(nome) or ["latest"])[0]
+    return nome, versao, spec
+
+
+def avisos_versao(nome: str, versao: str, spec: dict) -> list[str]:
+    """Problemas com a versão escolhida — dito antes de gastar uma hora."""
+    problemas = []
+    versoes = spec.get("versions", {})
+    if versao and versoes and versao not in versoes:
+        conhecidas = " ".join(_versoes_ordenadas(nome))
+        problemas.append(f"versão {versao} desconhecida para {nome} (conhecidas: {conhecidas})")
+        return problemas
+    info_v = versoes.get(versao, {})
+    if spec.get("policy") == "lts" and versoes and not info_v.get("lts"):
+        problemas.append(f"{nome} {versao} não é LTS — só damos suporte a LTS nesta família")
+    eol = info_v.get("eol")
+    if eol:
+        # Sem relógio de rede: comparamos com a data de compilação do Python,
+        # que chega para apanhar uma versão claramente fora de suporte.
+        import datetime
+        hoje = datetime.date.today().strftime("%Y-%m")
+        if eol < hoje:
+            problemas.append(f"{nome} {versao} saiu de suporte em {eol} — sem correcções de segurança")
+    return problemas
 
 
 def detect_host() -> str:
-    """ID do /etc/os-release, com recurso ao ID_LIKE quando a distro é derivada."""
+    """`<id>:<versão>` a partir do /etc/os-release, já normalizado."""
     data = {}
     for path in ("/etc/os-release", "/usr/lib/os-release"):
         if os.path.exists(path):
@@ -96,23 +240,27 @@ def detect_host() -> str:
                     k, v = line.split("=", 1)
                     data[k] = v.strip().strip('"')
             break
-    ident = data.get("ID", "").lower()
-    if ident in HOSTS:
-        return ident
-    for like in data.get("ID_LIKE", "").lower().split():
-        if like in HOSTS:
-            return like
-    return ident or "unknown"
+    ident = ALIASES.get(data.get("ID", "").lower(), data.get("ID", "").lower())
+    versao = data.get("VERSION_ID", "")
+    if ident not in DISTROS:
+        for like in data.get("ID_LIKE", "").lower().split():
+            like = ALIASES.get(like, like)
+            if like in DISTROS:
+                # Derivada desconhecida: usamos a base, mas a versão é da base,
+                # não da derivada — e nesse caso mais vale deixá-la em branco.
+                return like
+        return ident or "unknown"
+    return f"{ident}:{versao}" if versao else ident
 
 
 def host_spec(name: str) -> dict:
-    spec = HOSTS.get(name)
+    _, _, spec = resolve_alvo(name)
     if spec:
         return spec
     # Distro desconhecida não é motivo para desistir: com podman, o contentor
     # trata do resto. Só não sabemos dizer como instalar o podman.
     return {"family": "unknown", "install": "(instala o podman com o gestor da tua distro)",
-            "pkgs": "podman", "native": False}
+            "pkgs": "podman", "native": False, "versions": {}}
 
 
 # -------------------------------------------------------------------- YAML leve
@@ -323,15 +471,31 @@ def have(cmd: str) -> bool:
 
 
 def cmd_doctor(args):
-    host = args.distro or detect_host()
-    spec = host_spec(host)
+    alvo = args.distro or detect_host()
+    nome, versao, spec = resolve_alvo(alvo)
+    spec = spec or host_spec(alvo)
     fails = 0
 
     print(f"\n{BLD}Host{RST}")
-    if spec["family"] == "unknown":
-        warn(f"distro '{host}' não reconhecida — o build por contentor deve funcionar na mesma")
+    if spec.get("family", "unknown") == "unknown":
+        warn(f"distro '{nome}' não reconhecida — o build por contentor deve funcionar na mesma")
     else:
-        ok(f"{host} (família {spec['family']})")
+        etiqueta = f"{nome} {versao}".strip()
+        info_v = spec.get("versions", {}).get(versao, {})
+        extras = []
+        if info_v.get("lts"):
+            extras.append("LTS")
+        if info_v.get("base_version"):
+            extras.append(f"base: {spec.get('base')} {info_v['base_version']}")
+        if spec.get("policy") == "lts" and not args.distro:
+            extras.append("política: só LTS")
+        problemas = avisos_versao(nome, versao, spec)
+        graves = [p for p in problemas if "desconhecida" in p or "não é LTS" in p]
+        detalhe = f"família {spec['family']}" + (", " + ", ".join(extras) if extras else "")
+        (bad if graves else ok)(f"{etiqueta} ({detalhe})")
+        for problema in problemas:
+            (bad if problema in graves else warn)(problema)
+        fails += len(graves)
 
     print(f"\n{BLD}Motor de contentores{RST}")
     engine = None
@@ -341,14 +505,14 @@ def cmd_doctor(args):
             ok(f"{candidate} presente")
             break
     if not engine:
-        if spec["native"]:
+        if spec.get("native"):
             warn("sem podman/docker — mas nesta distro o build pode correr nativamente")
         else:
             bad("sem podman nem docker")
             print(f"      {spec['install'].format(pkgs=spec['pkgs'])}")
             fails += 1
 
-    if spec["native"]:
+    if spec.get("native"):
         print(f"\n{BLD}Build nativo{RST}")
         if have("buildiso"):
             ok("manjaro-tools instalado (dá para construir sem contentor)")
@@ -484,6 +648,27 @@ def cmd_validate(args):
     ok(f"binários: {len(spec.get('binaries') or [])} · overlays: {len(spec.get('overlays') or [])}")
     print()
     ok("inventário válido")
+
+
+def cmd_distros(args):
+    """Onde é que isto corre, e com que versões."""
+    print(f"\n{BLD}Distros suportadas{RST}   (sem versão, aplica-se a política)\n")
+    print(f"  {'DISTRO':<22} {'POLÍTICA':<10} {'POR OMISSÃO':<12} VERSÕES")
+    for nome in sorted(DISTROS):
+        spec = DISTROS[nome]
+        _, omissao, _ = resolve_alvo(nome)
+        versoes = " ".join(_versoes_ordenadas(nome)) or "—"
+        nativo = " (build nativo)" if spec.get("native") else ""
+        print(f"  {nome:<22} {spec.get('policy', 'latest'):<10} {omissao:<12} {versoes}{nativo}")
+    print(f"""
+  {DIM}Ubuntu, Zorin, Mint e Pop!_OS: só LTS. Sem versão → a última LTS.
+  As restantes: sem versão → a mais recente.
+  O Zorin é Ubuntu por baixo — o 18 assenta no 24.04, o 17 no 22.04.{RST}
+
+  delonixos build --from ubuntu          # última LTS
+  delonixos build --from ubuntu:22.04    # LTS específica
+  delonixos build --from fedora:42
+""")
 
 
 # ----------------------------------------------------------------------- fontes
@@ -655,8 +840,13 @@ def cmd_render(args):
 
 # ------------------------------------------------------------------------ build
 def cmd_build(args):
-    host = args.from_distro or detect_host()
-    spec_host = host_spec(host)
+    alvo = args.from_distro or detect_host()
+    nome_host, versao_host, spec_host = resolve_alvo(alvo)
+    spec_host = spec_host or host_spec(alvo)
+    for problema in avisos_versao(nome_host, versao_host, spec_host):
+        if "desconhecida" in problema or "não é LTS" in problema:
+            die(f"{problema}\n  (vê as suportadas: delonixos distros)")
+        warn(problema)
     repo = ensure_repo()
 
     inventory = Path(args.file).resolve() if args.file else None
@@ -688,8 +878,8 @@ def cmd_build(args):
         cmd += ["--engine", args.engine]
 
     print()
-    info(f"host: {host} ({spec_host['family']}) — "
-         f"{'build nativo possível' if spec_host['native'] else 'build em contentor'}")
+    info(f"host: {nome_host} {versao_host} ({spec_host.get('family', '?')}) — "
+         f"{'build nativo possível' if spec_host.get('native') else 'build em contentor'}")
     if args.dry_run:
         warn("--dry-run: não vou construir")
         print(f"  {' '.join(cmd)}")
@@ -713,6 +903,9 @@ def main():
     p.add_argument("--distro", help="forçar a distro do host (senão é detectada)")
     p.set_defaults(func=cmd_doctor)
 
+    p = sub.add_parser("distros", help="distros e versões suportadas")
+    p.set_defaults(func=cmd_distros)
+
     p = sub.add_parser("init", help="cria um projecto com inventário YAML")
     p.add_argument("path", nargs="?", help="directoria do projecto (por omissão, a actual)")
     p.add_argument("--distro", help="distro onde vais construir (ubuntu, fedora, arch…)")
@@ -731,8 +924,9 @@ def main():
     p.set_defaults(func=cmd_render)
 
     p = sub.add_parser("build", help="constrói a ISO")
-    p.add_argument("--from", dest="from_distro", metavar="DISTRO",
-                   help="ubuntu|debian|fedora|arch|manjaro|opensuse (por omissão, detectada)")
+    p.add_argument("--from", dest="from_distro", metavar="DISTRO[:VERSÃO]",
+                   help="ubuntu, ubuntu:22.04, fedora:42, zorin:18… "
+                        "(por omissão, a detectada; sem versão aplica-se a política)")
     p.add_argument("-f", "--file", help="inventário YAML (sem isto, constrói o perfil oficial)")
     p.add_argument("--kernel")
     p.add_argument("--engine", choices=["podman", "docker"])
