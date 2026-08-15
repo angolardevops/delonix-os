@@ -147,21 +147,40 @@ This is what separates a distro with nice packages from one that works:
   growing local cluster does not cost you the session.
 - **Real labs**: nested KVM (a hypervisor inside a VM), wider neighbour and
   conntrack tables (dozens of VMs plus hundreds of containers on one bridge stop
-  producing *neighbour table overflow*), `fs.aio-max-nr` for QEMU I/O, and the
-  `tuned` **delonix-lab** profile active from first boot.
+  producing *neighbour table overflow*), `fs.aio-max-nr` for QEMU I/O, and a
+  `tuned` profile matched to the chassis from first boot.
 - **I/O per disk type** (udev rules): NVMe with no scheduler (the device reorders
   better and burns less CPU), SSD on `mq-deadline`, spinning disk on `bfq` —
   which is what keeps the desktop usable while a 40 GB VM image copies.
 - **Network**: BBR **with the `fq` qdisc** (without it BBR loses the pacing that
   makes it worth having) and raised TCP buffers.
-- **GPU/NPU**: OpenCL and Level Zero on Intel, VA-API so video decodes on the GPU
-  instead of the CPU, and the **NPU driver** for Core Ultra.
+- **GPU/NPU**: OpenCL on both vendors (Level Zero on Intel, rusticl on Radeon),
+  VA-API so video decodes on the GPU instead of the CPU, the **NPU driver** for
+  Core Ultra, and `prime-run` on hybrid laptops so the discrete GPU is available
+  on demand rather than always or never.
+- **Tuned to the machine, not to a guess.** The same ISO boots on an AMD Ryzen
+  laptop and on an Intel vPro desktop. `delonix-tune` decides at first boot from
+  the CPU vendor, the chassis and the GPUs present: which `tuned` profile, whether
+  `thermald` is worth running (it is Intel-only code), which temperature sensor to
+  load, and whether there is a second GPU to expose.
+- **Not cooking the CPU.** On a laptop the profile keeps deep idle states enabled
+  and asks the processor for `balance_performance`, not `performance`. That is not
+  a compromise — with `amd_pstate`/`intel_pstate` in active mode the hardware
+  reaches full clock in microseconds anyway, and a CPU kept cool at idle boosts
+  higher and for longer once a build starts. `delonix-tune thermal` shows
+  temperature, frequency and throttle count live.
+- **Booting fast enough to not think about it.** `NetworkManager-wait-online` —
+  the 5-to-30-second stall in every mainstream distro — is off, because nothing
+  here needs the network before the desktop. Shutdown timeouts drop from 90s to
+  10s, the GRUB menu waits 2 seconds instead of 5, and the journal is capped so
+  every boot does not pay for last month's logs. `delonix-doctor` prints the real
+  `systemd-analyze` number and the slowest unit, so it stays honest.
 - **Not freezing under load** — what separates a machine you work on from one you
   wait for: resource accounting enabled in systemd (without it no limit has any
   effect), `user.slice` prioritised over the system, `systemd-oomd` deciding by
   **pressure (PSI)** rather than free RAM, `ananicy-cpp` rules that lower
   compilers and raise the compositor, and `MAKEFLAGS`/`CARGO_BUILD_JOBS` leaving
-  two cores free by default. For everything else, `delonix-carga cargo build`
+  two cores free by default. For everything else, `delonix-load cargo build`
   puts the work in a weight-limited cgroup — the build gets a few percent slower
   and you keep working.
 - **Angola by default**: a `pt_AO` locale (Kwanza, +244, Angola) generated on

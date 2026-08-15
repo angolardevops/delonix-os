@@ -18,7 +18,9 @@ license=('GPL-3.0-or-later')
 depends=('bash' 'pacman')
 optdepends=('yay: instalar perfis que vivem no AUR'
             'curl: descarregar o Delonix Runtime'
-            'libvirt: verificações de virtualização no delonix-doctor')
+            'libvirt: verificações de virtualização no delonix-doctor'
+            'tuned: perfis de desempenho aplicados pelo delonix-tune'
+            'lm_sensors: leitura de temperatura no delonix-tune thermal')
 source=("delonix-os-$pkgver.tar.gz")
 sha256sums=('SKIP')
 

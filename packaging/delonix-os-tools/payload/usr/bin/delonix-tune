@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+#
+# delonix-tune — detect the hardware and tune the machine for it.
+#
+#   delonix-tune              show what was detected and what is applied
+#   delonix-tune apply        detect and apply (runs at first boot)
+#   delonix-tune profile lab|balanced|quiet
+#   delonix-tune thermal      live view of temperature, frequency and throttling
+#
+# WHY THIS EXISTS
+#
+# A DevOps workstation is not one machine. The same ISO boots on an AMD Ryzen
+# laptop with hybrid graphics and on an Intel vPro desktop, and the settings
+# that make one fast make the other hot. Shipping a single "performance"
+# profile means one of those two machines runs its fans at full speed all day
+# for nothing.
+#
+# So the tuning is decided on the machine, at first boot, from three facts:
+# CPU vendor, chassis (laptop or desktop) and which GPUs are present.
+#
+# THE THERMAL RULE
+#
+# On a laptop, `governor=performance` is not "faster" — it is hotter. Modern
+# CPUs boost hard on demand and the governor cannot make them exceed their
+# thermal budget; all it does is keep clocks high while nothing is happening,
+# which spends thermal headroom that the next build will need. A processor kept
+# cool at idle boosts higher and for longer when work actually arrives.
+#
+# That is why the laptop profile keeps deep idle states enabled and asks for
+# `balance_performance` instead of `performance`. It is not a compromise: under
+# sustained load it is measurably the faster of the two, because it does not
+# start the build already at the thermal limit.
+set -uo pipefail
+
+BOLD=$'\e[1m'; DIM=$'\e[2m'; GRN=$'\e[32m'; YLW=$'\e[33m'; RED=$'\e[31m'; RST=$'\e[0m'
+ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$*"; }
+warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$*"; }
+bad()  { printf '  %s✗%s %s\n' "$RED" "$RST" "$*"; }
+info() { printf '  %s·%s %s\n' "$DIM" "$RST" "$*"; }
+head_() { printf '\n%s%s%s\n' "$BOLD" "$*" "$RST"; }
+
+as_root() { [[ $EUID -eq 0 ]] && "$@" || sudo "$@"; }
+
+# --- detection ---------------------------------------------------------------
+
+detect() {
+    CPU_VENDOR=$(awk -F': ' '/^vendor_id/{print $2; exit}' /proc/cpuinfo)
+    CPU_MODEL=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo)
+    CPU_THREADS=$(nproc)
+    CPU_CORES=$(lscpu 2>/dev/null | awk -F': +' '/^Core\(s\) per socket/{print $2}')
+    CPU_CORES=${CPU_CORES:-$CPU_THREADS}
+
+    case $CPU_VENDOR in
+        AuthenticAMD) VENDOR=amd ;;
+        GenuineIntel) VENDOR=intel ;;
+        *)            VENDOR=other ;;
+    esac
+
+    # hostnamectl is the portable reading of DMI chassis type; the sysfs file is
+    # the fallback for when systemd is not running (a chroot, the live build).
+    CHASSIS=$(hostnamectl chassis 2>/dev/null || true)
+    if [[ -z $CHASSIS ]]; then
+        case $(cat /sys/class/dmi/id/chassis_type 2>/dev/null || echo 3) in
+            8|9|10|11|14|30|31|32) CHASSIS=laptop ;;
+            *)                     CHASSIS=desktop ;;
+        esac
+    fi
+    [[ $CHASSIS =~ ^(laptop|notebook|portable|handset|tablet|convertible)$ ]] &&
+        MOBILE=1 || MOBILE=0
+
+    # A battery is the honest test: a "laptop" docked forever still has one, and
+    # a mini-PC that reports itself as portable does not.
+    HAS_BATTERY=0
+    compgen -G '/sys/class/power_supply/BAT*' >/dev/null && HAS_BATTERY=1
+
+    GPUS=$(lspci 2>/dev/null | grep -iE 'vga|3d controller|display controller' || true)
+    GPU_NVIDIA=0; GPU_AMD=0; GPU_INTEL=0
+    grep -qi nvidia   <<<"$GPUS" && GPU_NVIDIA=1
+    grep -qiE 'amd|ati|radeon' <<<"$GPUS" && GPU_AMD=1
+    grep -qi 'intel'  <<<"$GPUS" && GPU_INTEL=1
+    HYBRID=0
+    (( GPU_NVIDIA + GPU_AMD + GPU_INTEL >= 2 )) && HYBRID=1
+
+    # The NPU shows up as /dev/accel/accel0 (Intel Core Ultra, AMD XDNA).
+    HAS_NPU=0
+    compgen -G '/dev/accel/accel*' >/dev/null && HAS_NPU=1
+
+    SCALING_DRIVER=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver 2>/dev/null || echo none)
+    PLATFORM_PROFILE=/sys/firmware/acpi/platform_profile
+    HAS_PLATFORM_PROFILE=0
+    [[ -w $PLATFORM_PROFILE || -r $PLATFORM_PROFILE ]] && HAS_PLATFORM_PROFILE=1
+
+    MEM_GB=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 / 1024 ))
+
+    # The profile choice, in one place.
+    if (( MOBILE || HAS_BATTERY )); then
+        WANT_PROFILE=delonix-lab-mobile
+        WANT_REASON="portátil: desempenho sustentado sem cozer o processador"
+    else
+        WANT_PROFILE=delonix-lab
+        WANT_REASON="fixo: dissipação para manter o turbo, sem penalizar a bateria"
+    fi
+}
+
+# --- report ------------------------------------------------------------------
+
+show() {
+    detect
+    head_ "Hardware detectado"
+    info "CPU        $CPU_MODEL"
+    info "           $CPU_CORES núcleos / $CPU_THREADS threads · fabricante: $VENDOR"
+    info "Memória    ${MEM_GB} GB"
+    info "Chassis    $CHASSIS$( ((HAS_BATTERY)) && echo ' (com bateria)')"
+
+    local g=()
+    ((GPU_INTEL))  && g+=("Intel")
+    ((GPU_AMD))    && g+=("AMD")
+    ((GPU_NVIDIA)) && g+=("NVIDIA")
+    info "GPU        ${g[*]:-nenhuma detectada}$( ((HYBRID)) && echo ' — híbrida')"
+    info "NPU        $( ((HAS_NPU)) && echo 'presente (/dev/accel)' || echo 'ausente')"
+
+    head_ "Energia e temperatura"
+    if [[ $SCALING_DRIVER == none ]]; then
+        bad "sem driver de frequência — o CPU está a correr sem escalonamento"
+    elif [[ $SCALING_DRIVER == acpi-cpufreq ]]; then
+        warn "driver: acpi-cpufreq (genérico)"
+        warn "  → o driver do fabricante daria melhor resposta e menos calor."
+        warn "    Confirma o cmdline: grep -o '[a-z]*_pstate=[a-z]*' /proc/cmdline"
+    else
+        ok "driver de frequência: $SCALING_DRIVER"
+    fi
+
+    local gov epp
+    gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo n/d)
+    epp=$(cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference 2>/dev/null || echo n/d)
+    info "governor: $gov · preferência energia/desempenho: $epp"
+
+    if (( MOBILE )) && [[ $gov == performance && $epp == performance ]]; then
+        warn "num portátil isto mantém as frequências altas em repouso —"
+        warn "  gasta margem térmica que a próxima compilação vai precisar."
+    fi
+
+    if (( HAS_PLATFORM_PROFILE )); then
+        ok "perfil de plataforma (ACPI): $(cat $PLATFORM_PROFILE 2>/dev/null)"
+        info "  disponíveis: $(cat "${PLATFORM_PROFILE}_choices" 2>/dev/null || echo n/d)"
+    else
+        info "sem perfil de plataforma ACPI (o firmware não o expõe)"
+    fi
+
+    # thermald is Intel-only. On AMD it starts, finds nothing it understands and
+    # sits there. Saying so is more useful than a green tick.
+    if systemctl is-active --quiet thermald 2>/dev/null; then
+        if [[ $VENDOR == intel ]]; then
+            ok "thermald activo (gestão térmica da Intel)"
+        else
+            warn "thermald activo mas este CPU é $VENDOR — não faz nada aqui"
+            warn "  → sudo systemctl disable --now thermald"
+        fi
+    elif [[ $VENDOR == intel ]]; then
+        warn "thermald parado num CPU Intel — sudo systemctl enable --now thermald"
+    fi
+
+    local temp
+    temp=$(sensors 2>/dev/null | awk '/^(Tctl|Package id 0|Tdie)/{print $2; exit}')
+    [[ -n ${temp:-} ]] && info "temperatura actual: $temp"
+
+    head_ "Perfil aplicado"
+    local actual
+    actual=$(tuned-adm active 2>/dev/null | sed 's/.*: //')
+    if [[ $actual == "$WANT_PROFILE" ]]; then
+        ok "$actual"
+        info "$WANT_REASON"
+    else
+        warn "activo: ${actual:-nenhum} · esperado para este hardware: $WANT_PROFILE"
+        warn "  → delonix-tune apply"
+    fi
+
+    if (( HYBRID && GPU_NVIDIA )); then
+        head_ "Gráficos híbridos"
+        if command -v prime-run >/dev/null; then
+            ok "prime-run disponível — 'prime-run <programa>' usa a GPU dedicada"
+        else
+            warn "prime-run em falta (pacote nvidia-prime)"
+        fi
+        systemctl is-active --quiet switcheroo-control 2>/dev/null &&
+            ok "switcheroo-control activo — o KDE oferece 'abrir com a GPU dedicada'" ||
+            info "switcheroo-control parado — sudo systemctl enable --now switcheroo-control"
+    fi
+    printf '\n'
+}
+
+# --- apply -------------------------------------------------------------------
+
+apply() {
+    detect
+    head_ "A afinar para este hardware"
+    info "$CPU_MODEL · $CHASSIS · $WANT_REASON"
+
+    if command -v tuned-adm >/dev/null; then
+        as_root systemctl start tuned 2>/dev/null || true
+        if as_root tuned-adm profile "$WANT_PROFILE" 2>/dev/null; then
+            ok "perfil tuned: $WANT_PROFILE"
+        else
+            warn "não consegui activar $WANT_PROFILE (o tuned está instalado?)"
+        fi
+    fi
+
+    # thermald only where it does something.
+    if [[ $VENDOR == intel ]]; then
+        as_root systemctl enable --now thermald 2>/dev/null &&
+            ok "thermald ligado (gestão térmica Intel)" || true
+    else
+        if systemctl is-enabled --quiet thermald 2>/dev/null; then
+            as_root systemctl disable --now thermald 2>/dev/null &&
+                ok "thermald desligado — é código Intel, este CPU é $VENDOR" || true
+        fi
+    fi
+
+    # AMD Zen has an on-die temperature sensor that lm_sensors only reads with
+    # the module loaded; without it `sensors` shows nothing and every thermal
+    # question becomes guesswork.
+    if [[ $VENDOR == amd ]]; then
+        as_root modprobe k10temp 2>/dev/null && ok "sensor k10temp carregado" || true
+    elif [[ $VENDOR == intel ]]; then
+        as_root modprobe coretemp 2>/dev/null && ok "sensor coretemp carregado" || true
+    fi
+
+    if (( HYBRID && GPU_NVIDIA )); then
+        as_root systemctl enable --now switcheroo-control 2>/dev/null &&
+            ok "switcheroo-control ligado (GPU dedicada a pedido)" || true
+    fi
+
+    # A machine with plenty of RAM does not need to swap to disk under load; one
+    # without it needs the compressed swap more than anyone. Both are already
+    # handled by zram-generator — this only reports which case applies.
+    if (( MEM_GB <= 16 )); then
+        info "${MEM_GB} GB de RAM: o zram é o que evita o congelamento sob carga"
+    fi
+
+    ok "afinação concluída"
+    printf '\n%sVer o estado a qualquer momento:%s delonix-tune\n\n' "$DIM" "$RST"
+}
+
+# --- manual profile ----------------------------------------------------------
+
+set_profile() {
+    detect
+    case ${1:-} in
+        lab)      p=$( ((MOBILE)) && echo delonix-lab-mobile || echo delonix-lab ) ;;
+        balanced) p=balanced ;;
+        quiet)    p=powersave ;;
+        *)  echo "perfis: lab (trabalho), balanced (equilibrado), quiet (silêncio)"; exit 1 ;;
+    esac
+    as_root tuned-adm profile "$p" && ok "perfil: $p"
+}
+
+# --- thermal watch -----------------------------------------------------------
+
+thermal() {
+    command -v sensors >/dev/null || { bad "instala lm_sensors"; exit 1; }
+    detect
+    printf '%sTemperatura, frequência e limitação — Ctrl-C para sair%s\n\n' "$DIM" "$RST"
+    while true; do
+        local t f throttle=""
+        t=$(sensors 2>/dev/null | awk '/^(Tctl|Package id 0|Tdie)/{print $2; exit}')
+        f=$(awk '/^cpu MHz/{s+=$4; n++} END{if(n) printf "%.0f", s/n}' /proc/cpuinfo)
+        # Non-zero here means the firmware is actively holding the clocks down.
+        if [[ -r /sys/devices/system/cpu/cpu0/thermal_throttle/core_throttle_count ]]; then
+            local c
+            c=$(cat /sys/devices/system/cpu/cpu0/thermal_throttle/core_throttle_count)
+            (( c > 0 )) && throttle=" ${YLW}[limitado ${c}×]${RST}"
+        fi
+        printf '\r  %s  ·  %s MHz médios%s          ' "${t:-n/d}" "${f:-?}" "$throttle"
+        sleep 2
+    done
+}
+
+case ${1:-show} in
+    show|status|"") show ;;
+    apply)          apply ;;
+    profile)        shift; set_profile "$@" ;;
+    thermal|temp)   thermal ;;
+    -h|--help|help)
+        sed -n '2,10p' "$0" | sed 's/^# \?//' ;;
+    *) echo "delonix-tune [show|apply|profile <lab|balanced|quiet>|thermal]"; exit 1 ;;
+esac

@@ -2,16 +2,29 @@
 # Depois de editar: sudo grub-mkconfig -o /boot/grub/grub.cfg
 
 GRUB_DEFAULT=saved
-GRUB_TIMEOUT=5
+# Dois segundos: o menu continua lá e continua a responder à seta para baixo
+# (que o congela), mas quem só quer arrancar não fica a olhar para ele. Este é
+# o segundo mais caro do arranque, porque é 100% espera.
+GRUB_TIMEOUT=2
 GRUB_TIMEOUT_STYLE=menu
 GRUB_DISTRIBUTOR="DelonixOS"
 
 # `quiet splash` é o que dá o Plymouth limpo. Para diagnosticar um arranque
 # partido, tira `quiet splash` na linha de edição do GRUB (tecla `e`).
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash udev.log_priority=3 nowatchdog"
+#
+# Arranque: `nowatchdog` poupa a inicialização do cão-de-guarda do hardware.
+# `libahci.ignore_sss` deixa os discos arrancarem em paralelo em vez de à vez.
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash udev.log_priority=3 nowatchdog libahci.ignore_sss=1"
+
 # systemd.unified_cgroup_hierarchy: cgroup v2 puro — obrigatório para o
 # rootless com limites (ver delonix-doctor).
-GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1"
+#
+# Os dois `*_pstate=active` são propositadamente os DOIS. A mesma ISO arranca em
+# AMD (Ryzen) e em Intel (vPro), e o kernel simplesmente ignora o parâmetro do
+# fabricante que não está presente. Sem eles, um Zen 4 ou um Core recente cai no
+# `acpi-cpufreq`, que não vê os limites de frequência que o próprio processador
+# publica — resultado: escalonamento mais lento a subir e mais quente a descer.
+GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1 amd_pstate=active intel_pstate=active"
 
 GRUB_PRELOAD_MODULES="part_gpt part_msdos"
 GRUB_TERMINAL_INPUT=console

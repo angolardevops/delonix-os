@@ -12,6 +12,7 @@ ficam em português, que é onde o raciocínio foi escrito.
 | [`delonix-toolbox`](delonix-toolbox.md) | instalar extras, ligar bases de dados, correr laboratórios |
 | [`delonix update`](delonix-toolbox.md#update--sistema-e-motor-num-comando) | actualizar o sistema e o Delonix Runtime |
 | [`delonix-load`](#delonix-load) | correr trabalho pesado sem perder a máquina |
+| [`delonix-tune`](#delonix-tune) | afinar a máquina ao hardware que ela tem mesmo |
 | [`delonix-kernel`](kernel.md) | compilar, arrancar e instalar um kernel Linux |
 | [`delonix-video`](#delonix-video) | levar gravações do OBS para o DaVinci Resolve |
 | [`delonixos`](cli.md) | construir a ISO, ou a tua própria distro |
@@ -55,6 +56,47 @@ A diferença prática: só com `nice`, um build de 32 threads continua a poder
 encher a memória e a fila do disco — e o desktop engasga na mesma. Com um
 cgroup, não pode. O build fica alguns por cento mais lento e tu continuas a
 trabalhar, que era a troca que querias.
+
+## `delonix-tune`
+
+```bash
+delonix-tune                    # que hardware é este, e está afinado para ele
+delonix-tune apply              # detectar e aplicar (corre no primeiro arranque)
+delonix-tune profile quiet      # lab | balanced | quiet
+delonix-tune thermal            # temperatura, frequência e limitação em directo
+```
+
+A mesma ISO arranca num portátil AMD Ryzen com gráficos híbridos e numa
+secretária Intel vPro. O que faz uma voar faz a outra ferver — por isso nada
+disto se decide quando a imagem é construída. Decide-se na máquina, a partir do
+fabricante do CPU, do chassis e das GPUs presentes.
+
+O que muda, em concreto:
+
+| Detectado | Consequência |
+|---|---|
+| Tem bateria | perfil `delonix-lab-mobile` — estados de repouso profundos mantidos, EPP `balance_performance` |
+| Sem bateria | perfil `delonix-lab` — repouso profundo desligado, EPP `performance` |
+| CPU Intel | `thermald` ligado (é código exclusivamente Intel) |
+| CPU AMD | `thermald` desligado, `k10temp` carregado — sem ele não há leitura de temperatura nenhuma |
+| Duas ou mais GPUs | `switcheroo-control` ligado; `prime-run` disponível |
+
+### Porque é que o perfil de portátil não é o perfil lento
+
+Num portátil, `governor=performance` não é mais rápido — é mais quente. Com
+`amd_pstate=active` ou `intel_pstate=active`, a decisão de frequência passa para
+o próprio processador (CPPC/HWP), que chega à frequência máxima em
+microssegundos quando aparece trabalho. O governor `performance` não levanta
+esse tecto; só impede o processador de descer quando não há nada a fazer.
+
+E o custo é real: um processador mantido quente em repouso começa cada
+compilação já encostado ao limite térmico e limita-se mais cedo. Manter núcleos
+em repouso profundo liberta orçamento térmico que os núcleos activos gastam em
+turbo. Sob carga sustentada — que é o que uma compilação é — o perfil de
+portátil é o mais rápido dos dois.
+
+Se discordares para a tua máquina, `delonix-tune profile lab` força o perfil de
+secretária e fica assim até mandares o contrário.
 
 ## `delonix-video`
 

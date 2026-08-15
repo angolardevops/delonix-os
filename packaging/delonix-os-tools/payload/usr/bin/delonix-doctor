@@ -222,6 +222,46 @@ section "Storage"
 df -h / /home 2>/dev/null | awk 'NR==1 || /\//{printf "  %s\n", $0}' | head -4
 swapon --show=NAME,TYPE,SIZE,USED --noheadings 2>/dev/null | sed 's/^/  swap: /'
 
+section "Hardware tuning"
+# The full picture lives in `delonix-tune`; here we only catch the two states
+# that silently cost performance or heat, so nobody has to know to go looking.
+driver=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver 2>/dev/null || echo none)
+case $driver in
+    none)         warn "no cpufreq driver — the CPU is running unscaled" ;;
+    acpi-cpufreq) warn "generic cpufreq driver ($driver): slower to boost, hotter at idle" ;;
+    *)            ok "cpufreq driver: $driver" ;;
+esac
+
+profile=$(tuned-adm active 2>/dev/null | sed 's/.*: //')
+if compgen -G '/sys/class/power_supply/BAT*' >/dev/null; then
+    expected=delonix-lab-mobile
+else
+    expected=delonix-lab
+fi
+if [[ $profile == "$expected" ]]; then
+    ok "tuned profile: $profile (matches this chassis)"
+else
+    warn "tuned profile: ${profile:-none} — expected $expected here (run: delonix-tune apply)"
+fi
+
+vendor=$(awk -F': ' '/^vendor_id/{print $2; exit}' /proc/cpuinfo)
+if systemctl is-active --quiet thermald 2>/dev/null && [[ $vendor != GenuineIntel ]]; then
+    warn "thermald is running on a $vendor CPU — it only understands Intel"
+fi
+
+if [[ -r /sys/devices/system/cpu/cpu0/thermal_throttle/core_throttle_count ]]; then
+    n=$(cat /sys/devices/system/cpu/cpu0/thermal_throttle/core_throttle_count)
+    (( n > 0 )) && warn "CPU thermally throttled ${n}× since boot (delonix-tune thermal)"
+fi
+
+# Boot time is a feature here, so it gets measured rather than assumed.
+if command -v systemd-analyze >/dev/null; then
+    boot=$(systemd-analyze 2>/dev/null | head -1)
+    [[ -n $boot ]] && printf '  %s\n' "$boot"
+    slow=$(systemd-analyze blame --no-pager 2>/dev/null | head -1 | xargs)
+    [[ -n $slow ]] && printf '  slowest unit: %s\n' "$slow"
+fi
+
 printf '\n'
 if (( fails == 0 )); then
     printf '%s✓ ready%s (%d warnings)\n' "$GRN" "$RST" "$warns"

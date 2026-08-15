@@ -98,10 +98,23 @@ for dir in /var/lib/libvirt/images /var/lib/delonix; do
     chattr +C "$dir" 2>/dev/null && log "copy-on-write desligado em $dir"
 done
 
-# --- 5. perfil de desempenho para labs -----------------------------------------
-if command -v tuned-adm >/dev/null; then
+# --- 5. afinação ao hardware desta máquina -------------------------------------
+# NÃO forçamos aqui um perfil fixo. A mesma ISO arranca num portátil AMD com
+# gráficos híbridos e numa secretária Intel vPro, e o que faz uma voar faz a
+# outra ferver. O `delonix-tune` decide na máquina: perfil tuned pelo chassis,
+# thermald só onde serve (é código Intel), sensor de temperatura certo por
+# fabricante, e GPU dedicada a pedido quando há duas.
+if [[ -x /usr/bin/delonix-tune ]]; then
+    /usr/bin/delonix-tune apply 2>&1 | sed 's/^/[delonix-tune] /' || true
+elif command -v tuned-adm >/dev/null; then
+    # Sem o delonix-os-tools instalado, o mínimo defensável: nunca aplicar o
+    # perfil de secretária a uma máquina com bateria.
     systemctl start tuned 2>/dev/null || true
-    tuned-adm profile delonix-lab 2>/dev/null && log "perfil tuned: delonix-lab" || true
+    if compgen -G '/sys/class/power_supply/BAT*' >/dev/null; then
+        tuned-adm profile delonix-lab-mobile 2>/dev/null && log "perfil tuned: delonix-lab-mobile"
+    else
+        tuned-adm profile delonix-lab 2>/dev/null && log "perfil tuned: delonix-lab"
+    fi
 fi
 
 # --- estado do host -----------------------------------------------------------
@@ -110,6 +123,8 @@ log "userns máx: $(sysctl -n user.max_user_namespaces 2>/dev/null || echo n/d)"
 log "kvm: $([[ -e /dev/kvm ]] && echo presente || echo ausente)"
 log "nested: $(cat /sys/module/kvm_intel/parameters/nested 2>/dev/null ||
               cat /sys/module/kvm_amd/parameters/nested 2>/dev/null || echo n/d)"
+log "cpu: $(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo)"
+log "freq: $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver 2>/dev/null || echo n/d)"
 
 date -Is >"$STAMP"
 log "concluído."

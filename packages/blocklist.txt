@@ -93,3 +93,15 @@ code                        # VS Code a pedido (o IDE da casa é o antigravity)
 tlp                         # DECLARA conflito com o tuned (unresolvable package conflicts)
 tlp-rdw
 power-profiles-daemon       # substituído pelo tuned-ppd, que provides= o mesmo
+
+## --- hipervisores que não usamos (2026-08-15) -------------------------------
+# A virtualização no DelonixOS é KVM/QEMU através do `delonix vm` e do libvirt.
+# Os agentes de convidado de outros hipervisores só interessam se a ISO for
+# arrancada DENTRO deles — e nesse caso instalam-se em dez segundos. O que
+# custam a toda a gente: serviços a arrancar, módulos a carregar e um driver de
+# rato de X11 num sistema que corre Wayland.
+virtualbox-guest-utils      # convidado de VirtualBox — coberto por `delonix vm`
+virtualbox-guest-utils-nox
+virtualbox                  # o hipervisor em si nunca esteve, fica explícito
+open-vm-tools               # convidado de VMware
+xf86-input-vmmouse          # driver de rato de VM em X11; irrelevante em Wayland

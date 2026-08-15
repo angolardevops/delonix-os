@@ -11,9 +11,6 @@
 KERNEL-headers
 KERNEL-bbswitch
 KERNEL-broadcom-wl
-# NOTA: NÃO existe `KERNEL-virtualbox-guest-modules` na Manjaro — os módulos de
-# convidado do VirtualBox vêm no próprio kernel desde a 5.x. O `virtualbox-guest-utils`
-# (mais abaixo) é o que falta, e esse existe.
 
 ## --- gráficos abertos ------------------------------------------------------------
 xf86-video-amdgpu
@@ -39,10 +36,16 @@ libva-utils
 >nonfree_x86_64 nvidia-settings
 >nonfree_x86_64 libxnvctrl
 >nonfree_multi lib32-nvidia-utils
+# Portátil híbrido (iGPU + NVIDIA dedicada): sem isto a GPU dedicada está lá mas
+# não é usável a pedido. O `switcheroo-control` dá ao KDE o «Abrir com a placa
+# gráfica dedicada» no menu de contexto; o `nvidia-prime` dá o `prime-run`.
+>nonfree_x86_64 nvidia-prime
+switcheroo-control
 
 ## --- convidado de virtualização --------------------------------------------------
+# Só KVM/QEMU. O convidado de VirtualBox e de VMware foi retirado de propósito:
+# a virtualização no DelonixOS é `delonix vm` sobre KVM, e arrastar agentes de
+# hipervisores que não usamos custa serviços a arrancar e módulos a carregar em
+# todos os postos. Ver packages/blocklist.txt.
 qemu-guest-agent
 spice-vdagent
-virtualbox-guest-utils
-open-vm-tools
-xf86-input-vmmouse

@@ -368,17 +368,34 @@ sqlite
 ##############################################################################
 # Sem isto, uma workstation moderna corre com metade do hardware desligado:
 # descodificação de vídeo por software, OpenCL indisponível, NPU invisível.
+#
+# A ISO é a MESMA para AMD e para Intel, por isso leva os dois lados. O que não
+# corresponde ao hardware fica em disco a não fazer nada (uns MB), e em troca a
+# mesma imagem arranca afinada num Ryzen com Radeon e num Core vPro. Quem decide
+# o que activar é o `delonix-tune`, na máquina, no primeiro arranque.
+
+## Intel
 intel-compute-runtime   # OpenCL/Level Zero em Intel (provides opencl-driver)
 intel-media-driver      # VA-API: vídeo descodificado na GPU, não na CPU
 intel-npu-driver-bin    # [aur] NPU dos Core Ultra — inferência local sem GPU.
                         # Também ainda não está na Manjaro stable; quando chegar,
                         # troca-se pelo pacote do repositório.
-level-zero-loader
-vulkan-icd-loader
-clinfo                  # confirma que o OpenCL está mesmo lá
 intel-gpu-tools
-nvtop                   # monitor de GPU (NVIDIA/AMD/Intel)
-radeontop
+level-zero-loader
+
+## AMD
+# NOTA: `libva-mesa-driver` e `mesa-vdpau` NÃO se listam — foram absorvidos pelo
+# próprio `mesa` (que já vem pelo mhwd). Pedi-los dá "target not found".
+opencl-mesa             # OpenCL em Radeon (rusticl) — o par do intel-compute-runtime
+radeontop               # ocupação da GPU AMD
+
+## comum
+vulkan-icd-loader
+vulkan-mesa-layers      # camadas de validação/HUD para depurar aceleração
+clinfo                  # confirma que o OpenCL está mesmo lá, seja de quem for
+nvtop                   # monitor de GPU (NVIDIA/AMD/Intel na mesma janela)
+s-tui                   # frequência, temperatura e limitação térmica em tempo real
+                        # (o lm_sensors, que a alimenta, vem no Packages-Root)
 # NVIDIA e ROCm entram pelo mhwd/toolbox — dependem do hardware detectado.
 
 ##############################################################################

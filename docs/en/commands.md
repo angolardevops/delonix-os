@@ -12,6 +12,7 @@ Portuguese, which is where the reasoning was written.
 | [`delonix-toolbox`](delonix-toolbox.md) | install extras, start databases, run labs |
 | [`delonix update`](delonix-toolbox.md#update--system-and-engine-in-one-command) | update the system and the Delonix Runtime |
 | [`delonix-load`](#delonix-load) | run heavy work without losing the machine |
+| [`delonix-tune`](#delonix-tune) | tune this machine to the hardware it is actually on |
 | [`delonix-kernel`](kernel.md) | build, boot and install a Linux kernel |
 | [`delonix-video`](#delonix-video) | bridge OBS recordings into DaVinci Resolve |
 | [`delonixos`](cli.md) | build the ISO, or your own distro |
@@ -54,6 +55,46 @@ The practical difference: with `nice` alone, a 32-thread build can still fill
 memory and the disk queue, and the desktop stutters anyway. With a cgroup it
 cannot. The build gets a few percent slower and you keep working — which is the
 trade you actually wanted.
+
+## `delonix-tune`
+
+```bash
+delonix-tune                    # what hardware is this, and is it tuned for it
+delonix-tune apply              # detect and apply (runs once at first boot)
+delonix-tune profile quiet      # lab | balanced | quiet
+delonix-tune thermal            # live temperature, frequency and throttling
+```
+
+One ISO boots on an AMD Ryzen laptop with hybrid graphics and on an Intel vPro
+desktop. The settings that make one fast make the other hot, so nothing is
+decided when the image is built — it is decided on the machine, from the CPU
+vendor, the chassis and the GPUs present.
+
+What it actually changes:
+
+| Detected | Consequence |
+|---|---|
+| Battery present | `delonix-lab-mobile` profile — deep idle states kept, EPP `balance_performance` |
+| No battery | `delonix-lab` profile — deep idle disabled, EPP `performance` |
+| Intel CPU | `thermald` enabled (it is Intel-only code) |
+| AMD CPU | `thermald` disabled, `k10temp` loaded so temperature is readable at all |
+| Two or more GPUs | `switcheroo-control` enabled; `prime-run` available |
+
+### Why the laptop profile is not the slow one
+
+On a laptop, `governor=performance` is not faster — it is hotter. With
+`amd_pstate=active` or `intel_pstate=active` the frequency decision belongs to
+the processor itself (CPPC/HWP), which reaches full clock in microseconds when
+work arrives. The `performance` governor does not raise that ceiling; it only
+stops the CPU coming down when there is nothing to do.
+
+The cost is real: a processor kept warm at idle starts every build already
+against its thermal limit and throttles sooner. Keeping cores in deep idle
+frees thermal budget the active cores spend on boost. Under sustained load —
+which is what a build is — the mobile profile is the faster of the two.
+
+If you disagree for your machine, `delonix-tune profile lab` forces the desktop
+profile and it stays until you change it.
 
 ## `delonix-video`
 

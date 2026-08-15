@@ -149,7 +149,7 @@ Três coisas que se recusa a fazer:
 - **Labs a sério**: KVM aninhado (um hipervisor dentro de uma VM), tabelas de
   vizinhos e de conntrack alargadas (dezenas de VMs mais centenas de containers
   na mesma bridge deixam de dar *neighbour table overflow*), `fs.aio-max-nr` para
-  o I/O do QEMU, e o perfil `tuned` **delonix-lab** activo desde o primeiro
+  o I/O do QEMU, e um perfil `tuned` escolhido pelo chassis desde o primeiro
   arranque.
 - **I/O por tipo de disco** (regras udev): NVMe sem escalonador (o dispositivo
   reordena melhor e gasta menos CPU), SSD em `mq-deadline`, disco rotativo em
@@ -157,15 +157,37 @@ Três coisas que se recusa a fazer:
   VM de 40 GB.
 - **Rede**: BBR **com o qdisc `fq`** (sem ele o BBR perde o *pacing* que o faz
   valer) e buffers TCP subidos.
-- **GPU/NPU**: OpenCL e Level Zero em Intel, VA-API para o vídeo ser descodificado
-  na GPU em vez da CPU, e o **driver da NPU** dos Core Ultra.
+- **GPU/NPU**: OpenCL nos dois fabricantes (Level Zero na Intel, rusticl na
+  Radeon), VA-API para o vídeo ser descodificado na GPU em vez da CPU, o
+  **driver da NPU** dos Core Ultra, e `prime-run` nos portáteis híbridos — a GPU
+  dedicada passa a estar disponível a pedido, em vez de sempre ou nunca.
+- **Afinado à máquina, não a um palpite.** A mesma ISO arranca num portátil AMD
+  Ryzen e numa secretária Intel vPro. O `delonix-tune` decide no primeiro
+  arranque a partir do fabricante do CPU, do chassis e das GPUs presentes: que
+  perfil `tuned`, se vale a pena correr o `thermald` (é código só da Intel), que
+  sensor de temperatura carregar, e se há uma segunda GPU para expor.
+- **Sem cozer o processador.** Num portátil, o perfil mantém os estados de
+  repouso profundos e pede ao processador `balance_performance` em vez de
+  `performance`. Não é um compromisso — com o `amd_pstate`/`intel_pstate` em
+  modo activo, o hardware chega à frequência máxima em microssegundos na mesma,
+  e um CPU frio em repouso sobe mais alto e aguenta mais tempo quando a
+  compilação começa. O `delonix-tune thermal` mostra temperatura, frequência e
+  número de limitações em directo.
+- **Arranque rápido ao ponto de não se pensar nisso.** O
+  `NetworkManager-wait-online` — a paragem de 5 a 30 segundos que existe em
+  qualquer distro comum — está desligado, porque nada aqui precisa de rede antes
+  do ambiente gráfico. Os tempos de espera no encerramento descem de 90s para
+  10s, o menu do GRUB espera 2 segundos em vez de 5, e o diário tem tecto para
+  que cada arranque não pague os registos do mês passado. O `delonix-doctor`
+  imprime o número real do `systemd-analyze` e a unidade mais lenta, para isto
+  se manter honesto.
 - **Não travar sob carga** — o ponto que separa uma máquina de trabalho de uma
   que se usa à espera: contabilidade de recursos ligada no systemd (sem ela,
   nenhum limite tem efeito), `user.slice` com prioridade sobre o sistema,
   `systemd-oomd` a decidir por **pressão (PSI)** em vez de RAM livre, regras do
   `ananicy-cpp` que baixam compiladores e sobem o compositor, e
   `MAKEFLAGS`/`CARGO_BUILD_JOBS` a deixar dois núcleos livres por omissão.
-  Para o resto, `delonix-carga cargo build` põe o trabalho num cgroup com peso
+  Para o resto, `delonix-load cargo build` põe o trabalho num cgroup com peso
   reduzido — o build fica alguns por cento mais lento e tu continuas a poder
   trabalhar.
 - **Angola por omissão**: locale `pt_AO` (Kwanza, +244, Angola) gerado no
