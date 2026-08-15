@@ -126,7 +126,11 @@ delonix-doctor                                  # esta máquina está mesmo pron
 delonix-toolbox list                            # perfis opcionais
 delonix-toolbox db start postgres redis mongo   # as bases de dados vêm paradas
 delonix-toolbox eyecandy on                     # queres as animações de volta?
+delonix-toolbox lab up observability            # Grafana+Prometheus+Loki, no Delonix Runtime
+delonix update                                  # sistema + Delonix Runtime, num comando
 ```
+
+Referência completa: **[documentação do `delonix-toolbox`](docs/pt-AO/delonix-toolbox.md)**.
 
 ---
 
@@ -227,6 +231,7 @@ delonix-os/
 |---|---|
 | [Ferramentas por perfil](docs/pt-AO/ferramentas-por-perfil.md) | [Tools by profile](docs/en/tools-by-profile.md) |
 | [CLI `delonixos`](docs/pt-AO/cli.md) | [`delonixos` CLI](docs/en/cli.md) |
+| [`delonix-toolbox`](docs/pt-AO/delonix-toolbox.md) | [`delonix-toolbox`](docs/en/delonix-toolbox.md) |
 | [Decisões de desenho](docs/pt-AO/decisoes.md) | [Design decisions](docs/en/decisions.md) |
 | [Validar um build](docs/pt-AO/validacao.md) | [Validating a build](docs/en/validation.md) |
 | [Roteiro](docs/pt-AO/roteiro.md) | [Roadmap](docs/en/roadmap.md) |

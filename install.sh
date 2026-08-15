@@ -64,6 +64,22 @@ else
     warn "sem git — o delonixos vai buscá-lo na primeira utilização"
 fi
 
+# --- Delonix Runtime (opcional) -------------------------------------------------
+# O `delonixos build` não precisa dele (usa podman/docker), mas os laboratórios
+# do `delonix-toolbox` correm nele por omissão. Instala-se com DELONIX_RUNTIME=1.
+if [ "${DELONIX_RUNTIME:-0}" = "1" ]; then
+    RUNTIME_REPO="${DELONIX_GH_REPO:-angolardevops/delonix-runtime}"
+    say "a instalar o Delonix Runtime"
+    if curl -fsSL --max-time 20 "https://raw.githubusercontent.com/$RUNTIME_REPO/main/install.sh" \
+        -o /tmp/delonix-runtime-install.sh 2>/dev/null; then
+        sh /tmp/delonix-runtime-install.sh && ok "Delonix Runtime instalado"
+        rm -f /tmp/delonix-runtime-install.sh
+    else
+        warn "não encontrei o instalador do runtime; instala depois com:"
+        printf '        delonix-toolbox install delonix\n'
+    fi
+fi
+
 # --- PATH ----------------------------------------------------------------------
 case ":$PATH:" in
     *":$PREFIX/bin:"*) ;;
@@ -81,6 +97,9 @@ printf '
     delonixos doctor                  esta máquina consegue construir?
     delonixos init --distro ubuntu    cria um projecto com inventário
     delonixos build --from ubuntu     constrói a ISO oficial
+
+  Para instalar também o Delonix Runtime (motor dos laboratórios):
+    DELONIX_RUNTIME=1 sh install.sh
 
   Documentação: https://github.com/angolardevops/delonix-os
 \n' "$bld" "$rst"

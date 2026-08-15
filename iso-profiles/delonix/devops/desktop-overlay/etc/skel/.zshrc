@@ -36,6 +36,11 @@ bindkey '^[[1;5C' forward-word
 bindkey '^[[1;5D' backward-word
 
 ## --- ambiente ----------------------------------------------------------------
+# Aplicações Qt fora do KDE (e o Plasma em Wayland) seguem o tema do sistema.
+export QT_QPA_PLATFORMTHEME=kde
+# GTK escuro mesmo quando o portal não está a responder.
+export GTK_THEME=Breeze-Dark
+
 export EDITOR=nvim
 export VISUAL=nvim
 export PAGER=less
@@ -132,6 +137,21 @@ alias vms='virsh --connect qemu:///system list --all'
 alias vmstart='virsh --connect qemu:///system start'
 alias vmstop='virsh --connect qemu:///system shutdown'
 alias ch='cloud-hypervisor'
+
+# `delonix update` — actualiza o sistema E o motor da casa. O runtime não tem
+# esse subcomando (o `Update` que existe lá dentro é uma acção do reconciliador,
+# não um comando), por isso interceptamo-lo aqui e delegamos tudo o resto no
+# binário real. A verificação faz a função desaparecer sozinha no dia em que o
+# runtime ganhar o seu próprio `update` — sem esconder nada de ninguém.
+delonix() {
+    if [[ ${1:-} == update ]] &&
+       ! command delonix help 2>/dev/null | grep -qE '^[[:space:]]+update([[:space:]]|$)'; then
+        shift
+        command delonix-toolbox update "$@"
+        return $?
+    fi
+    command delonix "$@"
+}
 
 # N'GolaCloud
 alias dctl='delonixctl'

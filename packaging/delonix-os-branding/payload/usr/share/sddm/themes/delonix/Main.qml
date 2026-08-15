@@ -52,8 +52,8 @@ Rectangle {
             // Marca com os mesmos anéis de sinal do splash de arranque.
             Item {
                 id: markArea
-                width: 110
-                height: 110
+                width: 132
+                height: 132
                 Layout.alignment: Qt.AlignHCenter
 
                 Repeater {
@@ -61,7 +61,7 @@ Rectangle {
                     delegate: Rectangle {
                         id: wave
                         anchors.centerIn: parent
-                        width: 76
+                        width: 92
                         height: width
                         radius: width / 2
                         color: "transparent"
@@ -76,7 +76,7 @@ Rectangle {
                             ParallelAnimation {
                                 NumberAnimation {
                                     target: wave; property: "width"
-                                    from: 76; to: 110; duration: 2200
+                                    from: 92; to: 132; duration: 2200
                                     easing.type: Easing.OutCubic
                                 }
                                 SequentialAnimation {
@@ -91,45 +91,78 @@ Rectangle {
                 Image {
                     anchors.centerIn: parent
                     source: "logo.png"
-                    sourceSize.width: 72
-                    sourceSize.height: 72
+                    sourceSize.width: 88
+                    sourceSize.height: 88
                 }
             }
 
             Text {
                 text: "DelonixOS"
                 color: root.fg
-                font.pixelSize: 24
+                font.pixelSize: 30
                 font.bold: true
+                font.letterSpacing: 0.5
                 Layout.alignment: Qt.AlignHCenter
             }
 
             Text {
                 text: "DevOps · SRE · Platform Engineering"
-                color: root.muted
-                font.pixelSize: 11
+                color: root.delonixRed
+                font.pixelSize: 12
+                font.bold: true
+                font.letterSpacing: 1.2
                 Layout.alignment: Qt.AlignHCenter
-                Layout.bottomMargin: 6
+            }
+
+            // Linha de acento: dá peso à marca sem acrescentar ruído.
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 2
+                Layout.bottomMargin: 8
+                width: 64
+                height: 2
+                radius: 1
+                color: root.delonixRed
             }
 
             // ---- utilizador ----
             ComboBox {
                 id: userBox
                 Layout.fillWidth: true
+                Layout.preferredHeight: 44
                 model: userModel
                 textRole: "name"
                 currentIndex: userModel.lastIndex
                 editable: false
                 font.pixelSize: 14
+                // Sem isto o combo herda o estilo claro do sistema e fica
+                // ilegível sobre o cartão escuro.
+                contentItem: Text {
+                    text: userBox.displayText
+                    color: root.fg
+                    font: userBox.font
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: 12
+                    elide: Text.ElideRight
+                }
+                background: Rectangle {
+                    radius: 8
+                    color: root.surface
+                    border.width: 1
+                    border.color: userBox.activeFocus ? root.delonixRed : root.border
+                }
             }
 
             // ---- password ----
             TextField {
                 id: passwordField
                 Layout.fillWidth: true
+                Layout.preferredHeight: 44
                 echoMode: TextInput.Password
                 placeholderText: "Palavra-passe"
+                placeholderTextColor: root.muted
                 font.pixelSize: 14
+                leftPadding: 12
                 focus: true
                 color: root.fg
                 background: Rectangle {
@@ -169,8 +202,12 @@ Rectangle {
                 }
                 background: Rectangle {
                     radius: 8
-                    implicitHeight: 40
+                    implicitHeight: 46
                     color: parent.down ? "#8a0f18" : (parent.hovered ? "#be1622" : root.delonixRed)
+                    // Um halo ténue quando tem o foco: dá a saber que o Enter
+                    // faz login sem acrescentar mais texto ao ecrã.
+                    border.width: parent.activeFocus ? 2 : 0
+                    border.color: "#ffffff"
                 }
             }
 
@@ -232,6 +269,17 @@ Rectangle {
                 }
             }
         }
+    }
+
+    // ---- máquina -------------------------------------------------------------
+    // Quem administra várias máquinas agradece saber em qual está ANTES de entrar.
+    Text {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: 24
+        color: root.muted
+        font.pixelSize: 13
+        text: sddm.hostName
     }
 
     // ---- relógio -----------------------------------------------------------

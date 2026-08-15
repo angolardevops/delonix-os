@@ -1,0 +1,8 @@
+# DelonixOS — variáveis de sessão (lidas pelo PAM, valem para tudo o que a
+# sessão gráfica lançar, não só para o terminal).
+QT_QPA_PLATFORMTHEME=kde
+GTK_THEME=Breeze-Dark
+# Wayland por omissão, com recurso a X11 no que ainda não o suporta.
+QT_QPA_PLATFORM=wayland;xcb
+MOZ_ENABLE_WAYLAND=1
+_JAVA_AWT_WM_NONREPARENTING=1

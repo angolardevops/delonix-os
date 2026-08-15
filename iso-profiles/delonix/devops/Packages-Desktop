@@ -228,6 +228,8 @@ cloud-image-utils                           # cloud-init: seed ISO para labs
 ##############################################################################
 opentofu
 tflint                  # erros de HCL que o `plan` só descobre no fim
+open-policy-agent       # política como código: valida o QUE o manifesto diz,
+                        # não só se é YAML válido (o kubeconform faz o schema)
 ansible
 ansible-lint
 packer
@@ -259,6 +261,8 @@ gping                   # ping com gráfico: vê-se a latência a degradar
 bandwhich               # que processo está a consumir a rede, agora
 dog                     # cliente DNS moderno (o dig continua lá)
 hurl                    # testes de HTTP em ficheiro, versionáveis
+mitmproxy               # ver e alterar tráfego HTTPS: depurar um cliente que
+                        # mente sobre o que envia
 protobuf                # protoc: definir contratos, não só chamá-los
 buf                     # lint, breaking-change e geração de código a partir de .proto
 grpcurl                 # [aur]
@@ -271,6 +275,7 @@ age
 openbao                 # cliente de segredos dinâmicos (fork aberto do Vault)
 gitleaks                # segredos commitados: apanha antes de irem para o remoto
 syft                    # SBOM de imagens e de código — exigido em auditorias
+osv-scanner             # CVEs nas dependências de um projecto, por lockfile
 crane                   # operações em registos OCI sem descarregar a imagem toda
 sops
 step-cli
@@ -280,6 +285,24 @@ openssl
 openbsd-netcat
 nftables
 lynis
+
+##############################################################################
+# 9b. Provar afirmações sobre a máquina
+##############################################################################
+# "O disco é rápido" e "a máquina aguenta" são afirmações. Estas ferramentas
+# transformam-nas em números — antes de prometer capacidade a alguém.
+fio                     # I/O real do disco, com o padrão que interessa
+stress-ng               # levar CPU/memória/I-O ao limite de propósito
+atop                    # o único que responde a "o que se passou há 10 minutos"
+
+##############################################################################
+# 9c. Registar e comunicar (metade do trabalho de plataforma)
+##############################################################################
+asciinema               # gravar uma sessão de terminal para um post-mortem
+vhs                     # transformar um script em GIF: documentação que não envelhece
+mkdocs                  # portal interno de documentação, com o mesmo git
+graphviz                # grafos de dependências (pactree, plantuml, muitos outros)
+python-cookiecutter     # caminhos dourados: gerar um serviço novo a partir de um molde
 
 ##############################################################################
 # 10c. Backup e recuperação — a parte do trabalho que só se nota quando falta

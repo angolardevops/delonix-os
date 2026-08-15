@@ -11,6 +11,7 @@
 #   delonix-toolbox remove lang-java
 #   delonix-toolbox db start postgres redis mongo   (vêm instaladas mas paradas)
 #   delonix-toolbox lab up observability            (Grafana+Prometheus+Loki locais)
+#   delonix update                                  (sistema + Delonix Runtime)
 #   delonix-toolbox eyecandy on|off                 (animações do desktop)
 #   delonix-toolbox unprivileged-ports on|off
 set -euo pipefail
@@ -69,10 +70,21 @@ helper() {
 
 install_delonix() {
     # O motor da casa não está nos repos da Manjaro: vem dos artefactos
-    # publicados do delonix-runtime.
+    # publicados do delonix-runtime. Preferimos o instalador oficial (sabe
+    # escolher a arquitectura e verificar o que descarrega); se não existir,
+    # descarregamos os binários directamente.
+    local repo="${DELONIX_GH_REPO:-angolardevops/delonix-runtime}"
+    local instalador="https://raw.githubusercontent.com/$repo/main/install.sh"
+
+    if curl -fsSL --max-time 20 -o /dev/null -w '%{http_code}' "$instalador" 2>/dev/null | grep -q 200; then
+        info "a instalar o Delonix Runtime pelo instalador oficial"
+        curl -fsSL "$instalador" | sudo sh && { done_ "Delonix Runtime instalado"; return 0; }
+        warn "o instalador oficial falhou — a tentar os binários directamente"
+    fi
+
     info "a instalar Delonix Runtime + delonixctl a partir dos releases"
     local tmp; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
-    local base="https://github.com/angolardevops/delonix-runtime/releases/latest/download"
+    local base="https://github.com/$repo/releases/latest/download"
     for bin in delonix delonixctl; do
         if curl -fsSL "$base/${bin}-x86_64-unknown-linux-gnu" -o "$tmp/$bin"; then
             sudo install -Dm755 "$tmp/$bin" "/usr/local/bin/$bin"
@@ -175,69 +187,161 @@ cmd_db() {
 
 # --- laboratórios locais ------------------------------------------------------
 # Stacks que um SRE quer ligadas algumas horas por semana, não 24/7. Correm em
-# containers rootless com `podman kube play` — sem daemon, sem docker-compose,
-# e sem consumir nada quando estão em baixo.
+# containers rootless e não consomem nada quando estão em baixo.
+#
+# O motor por omissão é o Delonix Runtime — é o motor da casa, e um laboratório
+# é exactamente o tipo de carga para que ele foi feito. `--target podman|docker`
+# existe para quem ainda não o instalou, ou para comparar comportamentos.
 LABS_DIR=/usr/share/delonix/labs
 LABS_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/delonix/labs"
 
 cmd_lab() {
     local action=${1:-list}; shift || true
-    local lab=${1:-}
+    local lab="" target="${DELONIX_LAB_TARGET:-}"
 
-    _lab_file() {
-        local f="$LABS_DIR/$1.yaml"
-        [[ -f $f ]] || die "laboratório desconhecido: $1 (vê: delonix-toolbox lab list)"
-        echo "$f"
+    while (( $# )); do
+        case $1 in
+            --target) target=$2; shift 2 ;;
+            --target=*) target=${1#*=}; shift ;;
+            *) lab=$1; shift ;;
+        esac
+    done
+
+    # Escolha do motor: o delonix se estiver instalado, senão o que houver.
+    if [[ -z $target ]]; then
+        if command -v delonix >/dev/null; then target=delonix
+        elif command -v podman >/dev/null; then target=podman
+        elif command -v docker >/dev/null; then target=docker
+        else die "sem motor de containers (instala o delonix: delonix-toolbox install delonix)"; fi
+    fi
+    command -v "$target" >/dev/null || die "motor '$target' não está instalado"
+
+    _lab_dir() {
+        local d="$LABS_DIR/$1"
+        [[ -d $d ]] || die "laboratório desconhecido: $1 (vê: delonix-toolbox lab list)"
+        echo "$d"
+    }
+
+    # Prepara a área de dados e resolve o modelo. As configurações só são
+    # copiadas na PRIMEIRA vez — o que editares fica.
+    _lab_preparar() {
+        local nome=$1 origem destino
+        origem=$(_lab_dir "$nome")
+        destino="$LABS_DATA/$nome"
+        mkdir -p "$destino/dados"
+        if [[ -d $origem/config && ! -d $destino/config ]]; then
+            cp -a "$origem/config" "$destino/config"
+            info "configurações copiadas para $destino/config (edita à vontade)"
+        fi
+        # Directórios de dados que os volumes esperam
+        while read -r d; do
+            [[ -n $d ]] && mkdir -p "$destino/$d"
+        done < <(sed -n 's|.*@LAB_DATA@/\(dados/[a-z-]*\).*|\1|p' "$origem/pod.yaml.in" | sort -u)
+        sed "s|@LAB_DATA@|$destino|g" "$origem/pod.yaml.in" >"$destino/pod.yaml"
+        echo "$destino"
     }
 
     case $action in
         list|"")
-            printf '%sLaboratórios disponíveis%s\n\n' "$BLD" "$RST"
-            for f in "$LABS_DIR"/*.yaml; do
-                [[ -e $f ]] || continue
-                local nome; nome=$(basename "$f" .yaml)
-                local estado="parado"
-                podman pod exists "delonix-$nome" 2>/dev/null && estado="${GRN}a correr${RST}"
-                # A segunda linha do ficheiro traz a descrição.
-                local desc; desc=$(sed -n '3p' "$f" | sed 's/^# *//')
-                printf '  %-16s %-22b %s%s%s\n' "$nome" "$estado" "$DIM" "$desc" "$RST"
+            printf '%sLaboratórios%s   (motor: %s)\n\n' "$BLD" "$RST" "$target"
+            for d in "$LABS_DIR"/*/; do
+                [[ -d $d ]] || continue
+                local nome; nome=$(basename "$d")
+                local desc; desc=$(sed -n '2p' "$d/pod.yaml.in" | sed 's/^# *//')
+                printf '  %-16s %s%s%s\n' "$nome" "$DIM" "$desc" "$RST"
             done
-            printf '\n  delonix-toolbox lab up <nome>\n\n'
+            printf '\n  delonix-toolbox lab up <nome> [--target delonix|podman|docker]\n\n'
             ;;
+
         up)
             [[ -n $lab ]] || die "diz-me qual: delonix-toolbox lab up observability"
-            local f; f=$(_lab_file "$lab")
-            command -v podman >/dev/null || die "preciso do podman"
-            mkdir -p "$LABS_DATA/$lab"
-            info "a levantar o laboratório '$lab' (rootless)"
-            # Os volumes hostPath do YAML são relativos ao directório de trabalho.
-            ( cd "$LABS_DATA/$lab" && podman kube play --replace "$f" )
+            local destino; destino=$(_lab_preparar "$lab")
+            info "a levantar '$lab' com o $target"
+            case $target in
+                delonix) delonix pod create -f "$destino/pod.yaml" ;;
+                podman)  podman kube play --replace "$destino/pod.yaml" ;;
+                docker)  _lab_docker_up "$destino/pod.yaml" ;;
+            esac || die "falhou a levantar '$lab'"
             done_ "'$lab' a correr"
-            case $lab in
-                observability)
-                    printf '\n  Grafana:    http://localhost:3000  (sem login, é local)\n'
-                    printf '  Prometheus: http://localhost:9090\n'
-                    printf '  Loki:       http://localhost:3100\n'
-                    printf '  Dados em:   %s/%s\n\n' "$LABS_DATA" "$lab"
-                    ;;
-            esac
+            [[ -f $(_lab_dir "$lab")/PORTAS ]] && cat "$(_lab_dir "$lab")/PORTAS"
+            printf '  dados e configuração em: %s\n\n' "$destino"
             ;;
+
         down|stop)
             [[ -n $lab ]] || die "diz-me qual: delonix-toolbox lab down observability"
-            local f; f=$(_lab_file "$lab")
-            podman kube down "$f" && done_ "'$lab' parado (os dados ficam em $LABS_DATA/$lab)"
+            local destino="$LABS_DATA/$lab" nome_pod
+            nome_pod=$(yq -r '.metadata.name' "$destino/pod.yaml" 2>/dev/null || echo "delonix-$lab")
+            case $target in
+                delonix) delonix pod rm --force "$nome_pod" ;;
+                podman)  podman kube down "$destino/pod.yaml" ;;
+                docker)  _lab_docker_down "$destino/pod.yaml" ;;
+            esac
+            done_ "'$lab' parado (os dados ficam em $destino)"
             ;;
+
         status)
-            podman pod ps --filter "name=delonix-" \
-                --format "table {{.Name}} {{.Status}} {{.NumberOfContainers}}" 2>/dev/null ||
-                warn "sem laboratórios a correr"
+            case $target in
+                delonix) delonix pod ls 2>/dev/null || warn "nenhum pod a correr" ;;
+                podman)  podman pod ps --filter "name=delonix-" 2>/dev/null ;;
+                docker)  docker ps --filter "label=app=delonix-lab" ;;
+            esac
             ;;
+
         logs)
             [[ -n $lab ]] || die "diz-me qual"
-            podman pod logs -f "delonix-$lab" 2>/dev/null || die "'$lab' não está a correr"
+            local nome_pod; nome_pod=$(yq -r '.metadata.name' "$LABS_DATA/$lab/pod.yaml" 2>/dev/null)
+            case $target in
+                delonix) delonix pod logs "$nome_pod" ;;
+                podman)  podman pod logs -f "$nome_pod" ;;
+                docker)  docker logs -f "${nome_pod}-prometheus" ;;
+            esac
             ;;
-        *) die "usa: delonix-toolbox lab list|up|down|status|logs [nome]" ;;
+
+        *) die "usa: delonix-toolbox lab list|up|down|status|logs [nome] [--target motor]" ;;
     esac
+}
+
+# O docker não tem `kube play`. Traduzimos o Pod para `docker run`: o primeiro
+# container publica as portas e os restantes partilham a sua rede — é o
+# equivalente docker de um pod (netns partilhado).
+_lab_docker_up() {
+    local f=$1 pod primeiro=""
+    pod=$(yq -r '.metadata.name' "$f")
+    local n; n=$(yq -r '.spec.containers | length' "$f")
+    for (( i=0; i<n; i++ )); do
+        local nome imagem args env portas montagens
+        nome=$(yq -r ".spec.containers[$i].name" "$f")
+        imagem=$(yq -r ".spec.containers[$i].image" "$f")
+        mapfile -t args < <(yq -r ".spec.containers[$i].args[]? // empty" "$f")
+        local cmd=(docker run -d --name "${pod}-${nome}" --label app=delonix-lab --restart unless-stopped)
+
+        if [[ -z $primeiro ]]; then
+            while read -r porta; do
+                [[ -n $porta ]] && cmd+=(-p "$porta")
+            done < <(yq -r ".spec.containers[$i].ports[]? | \"\(.hostPort):\(.containerPort)\"" "$f")
+        else
+            cmd+=(--network "container:${pod}-${primeiro}")
+        fi
+
+        while read -r e; do
+            [[ -n $e ]] && cmd+=(-e "$e")
+        done < <(yq -r ".spec.containers[$i].env[]? | \"\(.name)=\(.value)\"" "$f")
+
+        while read -r m; do
+            [[ -n $m ]] && cmd+=(-v "$m")
+        done < <(yq -r "[.spec.volumes[] | {(.name): .hostPath.path}] | add as \$v |
+                        .spec.containers[$i].volumeMounts[]? |
+                        \"\(\$v[.name]):\(.mountPath)\(if .readOnly then \":ro\" else \"\" end)\"" "$f")
+
+        cmd+=("$imagem" "${args[@]}")
+        "${cmd[@]}" >/dev/null || return 1
+        [[ -z $primeiro ]] && primeiro=$nome
+    done
+}
+
+_lab_docker_down() {
+    local f=$1 pod; pod=$(yq -r '.metadata.name' "$f")
+    docker ps -aq --filter "name=^${pod}-" | xargs -r docker rm -f >/dev/null
 }
 
 # --- animações do desktop -----------------------------------------------------
@@ -268,6 +372,73 @@ cmd_eyecandy() {
         printf '%s  (reinicia a sessão para aplicar)%s\n' "$DIM" "$RST"
 }
 
+# --- actualizar o sistema e o motor da casa -----------------------------------
+# Um comando só para a pergunta "estou actualizado?". Trata das três origens
+# que compõem esta distro: os repositórios (Manjaro + [delonix]), o AUR, e os
+# binários do Delonix Runtime, que não vêm de repositório nenhum.
+cmd_update() {
+    local so_delonix=0 verificar=0
+    while (( $# )); do
+        case $1 in
+            --delonix-only) so_delonix=1; shift ;;
+            --check|-n)     verificar=1; shift ;;
+            *) die "usa: delonix update [--delonix-only] [--check]" ;;
+        esac
+    done
+
+    if (( verificar )); then
+        info "a verificar actualizações (sem instalar)"
+        checkupdates 2>/dev/null | head -30 ||
+            sudo pacman -Sy >/dev/null 2>&1 && pacman -Qu | head -30
+        local atual nova
+        atual=$(delonix --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        nova=$(curl -fsSL --max-time 15 \
+            "https://api.github.com/repos/${DELONIX_GH_REPO:-angolardevops/delonix-runtime}/releases/latest" \
+            2>/dev/null | grep -oP '"tag_name"\s*:\s*"v?\K[^"]+' | head -1)
+        printf '\n  Delonix Runtime: instalado %s · disponível %s\n\n' "${atual:-nenhum}" "${nova:-?}"
+        return 0
+    fi
+
+    if (( ! so_delonix )); then
+        info "sistema (Manjaro + [delonix] + AUR)"
+        if command -v yay >/dev/null; then yay -Syu --noconfirm
+        else sudo pacman -Syu --noconfirm; fi
+        done_ "sistema actualizado"
+    fi
+
+    # O runtime vem dos artefactos publicados, não de um repositório.
+    info "Delonix Runtime"
+    local antes; antes=$(delonix --version 2>/dev/null | head -1)
+    install_delonix
+    local depois; depois=$(delonix --version 2>/dev/null | head -1)
+    if [[ $antes == "$depois" && -n $antes ]]; then
+        printf '  %sjá estava na versão mais recente (%s)%s\n' "$DIM" "$antes" "$RST"
+    else
+        done_ "${antes:-nada} → ${depois:-?}"
+    fi
+
+    # Reconstruir o initramfs só se o núcleo ou o splash mudaram — a mensagem
+    # importa mais do que o comando: quem não sabe, reinicia sem saber porquê.
+    if [[ -n $(find /boot -name 'initramfs-*.img' -newer /var/lib/pacman/db.lck 2>/dev/null) ]]; then
+        warn "o kernel foi actualizado — reinicia para o usar"
+    fi
+    printf '\n'
+    ok_versoes
+}
+
+ok_versoes() {
+    printf '%sVersões%s\n' "$BLD" "$RST"
+    local pares=(
+        "DelonixOS:$(pacman -Q delonix-os 2>/dev/null | awk '{print $2}')"
+        "runtime:$(delonix --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+        "kernel:$(uname -r)"
+        "plasma:$(plasmashell --version 2>/dev/null | awk '{print $2}')"
+    )
+    for par in "${pares[@]}"; do
+        printf '  %-12s %s\n' "${par%%:*}" "${par#*:}"
+    done
+}
+
 cmd_unprivileged_ports() {
     local state=${1:-}
     case $state in
@@ -293,6 +464,8 @@ case ${1:-help} in
     remove|rm)           shift; cmd_remove "$@" ;;
     db)                  shift; cmd_db "$@" ;;
     lab)                 shift; cmd_lab "$@" ;;
+    update|upgrade)      shift; cmd_update "$@" ;;
+    version|--version)   shift; ok_versoes ;;
     eyecandy)            shift; cmd_eyecandy "$@" ;;
     unprivileged-ports)  shift; cmd_unprivileged_ports "$@" ;;
     help|--help|-h)

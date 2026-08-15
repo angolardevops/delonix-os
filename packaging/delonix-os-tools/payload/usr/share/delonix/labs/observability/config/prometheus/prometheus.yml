@@ -1,0 +1,22 @@
+# Editável: isto é copiado para ~/.local/share/delonix/labs/observability/ na
+# primeira vez e nunca mais é sobreposto — as tuas alterações sobrevivem.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    origem: delonixos-lab
+
+scrape_configs:
+  # A própria máquina: CPU, memória, disco, rede, PSI, temperaturas.
+  - job_name: host
+    static_configs:
+      - targets: ['localhost:9100']
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Acrescenta aqui o que estiveres a construir. Uma aplicação local com
+  # /metrics em :8080 aparece nas dashboards sem mais nada:
+  # - job_name: a-minha-app
+  #   static_configs:
+  #     - targets: ['localhost:8080']
