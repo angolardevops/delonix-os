@@ -12,6 +12,7 @@
 #   delonix-toolbox db start postgres redis mongo   (vêm instaladas mas paradas)
 #   delonix-toolbox lab up observability            (Grafana+Prometheus+Loki locais)
 #   delonix update                                  (sistema + Delonix Runtime)
+#   delonix-toolbox install davinci                 (DaVinci Resolve, guiado)
 #   delonix-toolbox eyecandy on|off                 (animações do desktop)
 #   delonix-toolbox unprivileged-ports on|off
 set -euo pipefail
@@ -37,7 +38,7 @@ declare -A DESC=(
     [ai]="Claude Code + Antigravity (reinstalar/actualizar)"
     [ai-local]="Ollama: modelos locais na GPU/NPU já activadas"
     [docs]="Hugo e Zola: portais e sites estáticos (o mkdocs já vem)"
-    [video-extra]="Shotcut, Flowblade e corte sem recodificar (LosslessCut)"
+    [davinci]="DaVinci Resolve (o download exige registo na Blackmagic)"
     [legendas]="whisper.cpp + Aegisub: transcrever e legendar na GPU/NPU local"
     [security-audit]="rkhunter + clamav: varredura periódica do posto"
 )
@@ -60,7 +61,7 @@ declare -A PKGS=(
     [ai]="claude-code antigravity"
     [ai-local]="ollama"
     [docs]="hugo zola"
-    [video-extra]="shotcut flowblade losslesscut-bin"
+    [davinci]="__davinci__"
     [legendas]="whisper.cpp-bin aegisub"
     [security-audit]="rkhunter clamav"
 )
@@ -103,6 +104,60 @@ install_delonix() {
     done
 }
 
+install_davinci() {
+    # O Resolve é proprietário e o ficheiro está atrás de um formulário de
+    # registo da Blackmagic: NÃO pode ser descarregado por script. O que dá para
+    # automatizar — encontrar o ficheiro, compilar, resolver dependências — fica
+    # automatizado; o resto é dito com clareza em vez de falhar sozinho.
+    local zip
+    zip=$(find "$HOME/Downloads" "$HOME/Transferências" "$PWD" -maxdepth 1 \
+          -iname 'DaVinci_Resolve_*_Linux.zip' 2>/dev/null | sort -V | tail -1)
+
+    if [[ -z $zip ]]; then
+        cat <<EOF
+
+  ${BLD}O DaVinci Resolve precisa de um passo manual${RST}
+
+  O instalador está atrás de um formulário de registo da Blackmagic e não pode
+  ser descarregado por script — não é uma limitação nossa.
+
+    1. abre  https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion
+    2. escolhe "DaVinci Resolve for Linux" (a versão gratuita chega)
+    3. guarda o .zip em ~/Downloads
+    4. corre outra vez:  delonix-toolbox install davinci
+
+  ${DIM}Com o ficheiro no sítio, o resto é automático.${RST}
+
+EOF
+        command -v xdg-open >/dev/null &&
+            (xdg-open "https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion" >/dev/null 2>&1 &)
+        return 1
+    fi
+
+    info "encontrado: $(basename "$zip")"
+    command -v git >/dev/null || die "preciso do git"
+    local tmp; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
+    git clone -q https://aur.archlinux.org/davinci-resolve.git "$tmp/davinci-resolve" ||
+        die "não consegui obter o PKGBUILD"
+    cp "$zip" "$tmp/davinci-resolve/"
+    info "a compilar (demora — são vários GB a extrair)"
+    ( cd "$tmp/davinci-resolve" && makepkg -si --noconfirm ) || die "a compilação falhou"
+    done_ "DaVinci Resolve instalado"
+
+    cat <<EOF
+
+  ${BLD}Antes da primeira edição${RST}
+
+  A versão gratuita do Resolve para Linux ${BLD}não lê H.264/H.265${RST}: as gravações
+  do OBS não importam directamente. Converte-as primeiro —
+
+      delonix-video para-davinci ~/Vídeos/DelonixOS/aula.mkv
+
+  E precisa de GPU com OpenCL/CUDA. Com NVIDIA:  delonix-toolbox install gpu-nvidia
+
+EOF
+}
+
 cmd_list() {
     printf '%sPerfis disponíveis%s\n\n' "$BLD" "$RST"
     for k in $(printf '%s\n' "${!DESC[@]}" | sort); do
@@ -120,6 +175,7 @@ cmd_install() {
     for profile in "$@"; do
         [[ -v PKGS[$profile] ]] || die "perfil desconhecido: $profile"
         if [[ ${PKGS[$profile]} == "__delonix__" ]]; then install_delonix; continue; fi
+        if [[ ${PKGS[$profile]} == "__davinci__" ]]; then install_davinci; continue; fi
         info "$profile — ${DESC[$profile]}"
         case $h in
             yay)    yay -S --needed --noconfirm ${PKGS[$profile]} ;;

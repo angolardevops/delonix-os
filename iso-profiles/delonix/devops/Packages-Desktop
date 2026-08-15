@@ -307,42 +307,24 @@ graphviz                # grafos de dependências (pactree e companhia)
 imagemagick             # recortar/anotar capturas para um post-mortem, em script
 python-cookiecutter     # caminhos dourados: gerar um serviço novo a partir de um molde
 
+#########################################################################################################################################################
+# 9d. Gravar conteúdo (vídeo-aulas, demos, post-mortems)
 ##############################################################################
-# 9d. Gravar e editar conteúdo (vídeo-aulas, demos, post-mortems)
-##############################################################################
-# Isto contradiz a regra "sem multimédia" com que a distro começou — e a
-# contradição é assumida: gravar uma aula ou uma demo É trabalho de quem faz
-# plataforma. O que continua fora são os leitores e as suites de escritório.
+# Duas ferramentas, escolhidas por ti: OBS Studio para gravar, DaVinci Resolve
+# para editar. Só o OBS vem na ISO — o Resolve é proprietário e o download exige
+# registo na Blackmagic, por isso o pacote do AUR parte de um ficheiro que TEM
+# de ser descarregado à mão. Instala-se depois, com ajuda:
 #
-# O critério foi "melhor com menos parametrização". A configuração que
-# normalmente se perde uma tarde a fazer vem no /etc/skel: cenas do OBS,
-# supressão de ruído no microfone, proxies do Kdenlive.
-
-## Gravar
-obs-studio              # cenas, câmara, várias fontes — já com perfil e cenas prontos
-gpu-screen-recorder     # gravar com custo quase nulo: o encoder da GPU faz o trabalho,
-                        # a máquina que está a ser demonstrada não sofre
-screenkey               # mostra as teclas premidas no ecrã — numa aula de terminal,
-                        # é a diferença entre seguir e adivinhar
-slop                    # seleccionar uma região do ecrã, para scripts de gravação
-
-## Editar
-kdenlive                # editor nativo do KDE; vem com proxies e aceleração ligados
-handbrake               # comprimir para publicar sem decorar flags do ffmpeg
-ffmpeg
-mpv                     # rever o que se gravou (leve; o VLC continua fora)
-
-## Áudio — é o que mais estraga uma vídeo-aula
-easyeffects             # cadeia de efeitos do microfone
-noise-suppression-for-voice  # RNNoise: tira o ruído de fundo e o teclado
-audacity                # cortar e limpar a faixa de áudio
-qpwgraph                # ligar fontes de áudio no PipeWire quando há mais do que uma
-
-## Imagem
-gimp                    # miniaturas e capas
+#     delonix-toolbox install davinci
+#
+# Isto contradiz a regra "sem multimédia" com que a distro começou, e a
+# contradição é assumida: gravar formação é trabalho de quem faz plataforma. O
+# que continua fora são os leitores e a gestão de colecções.
+obs-studio              # já com perfil, quatro cenas e supressão de ruído prontos
+ffmpeg                  # transcodificar para o Resolve (ver `delonix-video`)
 libva-utils             # confirmar que a codificação por hardware está mesmo activa
 
-##############################################################################
+###
 # 10c. Backup e recuperação — a parte do trabalho que só se nota quando falta
 ##############################################################################
 restic                  # backups incrementais, cifrados e deduplicados

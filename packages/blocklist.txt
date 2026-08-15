@@ -32,12 +32,14 @@ kbounce
 knights
 steam
 
-## --- Multimédia: leitores e arquivos, não produção --------------------------
-# NOTA: o `kdenlive` e o `audacity` SAÍRAM desta lista. Gravar uma vídeo-aula ou
-# uma demo é trabalho de quem faz plataforma, e a distro passou a trazer o que
-# isso exige (ver a secção 9d do Packages-Desktop). O que continua fora são os
-# leitores generalistas e a gestão de coleções — para rever o que se gravou
-# chega o `mpv`, que é leve.
+## --- Multimédia: leitores, arquivos e editores alternativos -----------------
+# A distro grava com OBS e edita com DaVinci Resolve (instalado a pedido, porque
+# o download exige registo na Blackmagic). Estes ficam de fora por serem
+# alternativas ao que foi escolhido, não por peso:
+kdenlive                    # o editor da casa é o DaVinci Resolve
+shotcut
+flowblade
+audacity                    # o Resolve tem a página Fairlight para o áudio
 vlc                         # ficam os codecs e o mpv, não o VLC
 haruna
 elisa                       # leitor de música

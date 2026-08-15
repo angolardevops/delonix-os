@@ -100,13 +100,13 @@ missing=()
 for t in kubectl helm k9s kubectx tofu ansible podman buildah skopeo git jq yq \
          age sops trivy cosign nvim rg fd starship zsh tmux docker \
          aws gcloud virsh qemu-system-x86_64 perf bpftrace \
-         cargo go python uv node psql valkey-cli restic rclone just duckdb \
+         cargo go python uv node psql valkey-cli restic rclone just duckdb obs ffmpeg \
          clang gdb golangci-lint mypy buf hyperfine cargo-nextest; do
     command -v "$t" >/dev/null || missing+=("$t")
 done
 (( ${#missing[@]} == 0 )) && ok "kit base completo" || bad "em falta: ${missing[*]}"
 
-for t in delonix delonixctl claude antigravity; do
+for t in delonix delonixctl claude antigravity resolve; do
     if command -v "$t" >/dev/null; then
         ok "$t $("$t" --version 2>/dev/null | head -1)"
     else

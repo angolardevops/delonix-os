@@ -131,30 +131,39 @@ docker-compose. `node-exporter` is configured with **PSI pressure metrics**, the
 ones that actually explain "the machine feels slow". Point a job at your own
 `/metrics` endpoint and your service appears in the same dashboards.
 
-### Recording and editing content — without losing an afternoon to setup
+### Recording and editing — OBS Studio and DaVinci Resolve
 
-Recording a lesson or a demo is platform work. The choice was for the tool that
-is **best with the least configuration**, and the setup people usually spend an
-afternoon discovering already ships:
+Two tools, chosen deliberately. The setup people usually spend an afternoon
+discovering already ships:
 
-| Tool | What is already configured |
+| | What is already configured |
 |---|---|
-| **OBS Studio** | a profile and **four scenes** — *Full screen*, *Screen + camera* (bottom right, 25%), *Camera only*, *Break*. 1080p60 with no rescaling (unreadable terminal text is always rescaling), **mkv** output so an interrupted recording is not lost, and `Ctrl+F9/F10/F11` to start, stop and pause. |
-| **Microphone** | OBS ships **RNNoise**, a noise gate and a compressor on the audio source; `easyeffects` carries the same preset system-wide. It is what separates an audible lesson from one with a fan and a keyboard in it. |
-| **Kdenlive** | **proxies enabled** (edit 1080p60 without the timeline stuttering; the export uses the original), hardware decoding, and the 1080p60 profile — the same one OBS records, so nothing is converted in between. |
-| **gpu-screen-recorder** | record at near-zero cost: the GPU encoder does the work, and the machine you are demonstrating does not suffer for it. |
-| **screenkey** | shows the keys you press on screen. In a terminal lesson that is the difference between following along and guessing. |
+| **OBS Studio** *(in the ISO)* | a profile and **four scenes** — *Full screen*, *Screen + camera* (bottom right, 25%), *Camera only*, *Break*. 1080p60 with **no rescaling** (unreadable terminal text in a recording is always rescaling), **mkv** output so an interrupted recording is not lost, and `Ctrl+F9/F10/F11` to start, stop and pause. |
+| **Microphone** | OBS ships **RNNoise**, a noise gate and a compressor on the audio source. It is what separates an audible lesson from one with a fan and a keyboard in it — and it needs nothing else installed. |
+| **DaVinci Resolve** *(on request)* | `delonix-toolbox install davinci` |
 
-Also: `handbrake` (compress for publishing without memorising ffmpeg flags),
-`audacity`, `qpwgraph` (wire audio sources in PipeWire), `gimp` (thumbnails),
-`mpv` (review), `slop` (region select for scripts).
+**Why Resolve is not in the ISO**: it is proprietary and the installer sits
+behind a Blackmagic registration form — it cannot be downloaded by a script.
+`delonix-toolbox install davinci` looks for the `.zip` in `~/Downloads`, opens
+the page if it cannot find it, and does **everything** else: dependencies,
+building the package, installing.
 
-Recording in 4K or with several cameras? `delonix-toolbox install video-extra`.
-Automatic captions on the local GPU/NPU: `delonix-toolbox install legendas`.
+**The trap that costs everyone their first afternoon**: the free version of
+Resolve for Linux **does not decode H.264/H.265**. An OBS recording simply does
+not appear on the timeline, and the error explains nothing. That is what
+`delonix-video` is for:
 
-> This contradicts the "no multimedia" rule the distro started with, and the
-> contradiction is deliberate: what stays out are the general-purpose
-> **players** and collection managers, not **production**.
+```bash
+delonix-video info aula.mkv               # warns if the file will not import
+delonix-video para-davinci aula.mkv       # converts to DNxHR — imports cleanly
+delonix-video publicar aula-editada.mov   # compresses for publishing
+```
+
+The original is never deleted. DNxHR is bigger (~2 GB per 10 min at 1080p), and
+that is the price of free Resolve not reading H.264 — not a choice of ours.
+
+Resolve also needs a GPU with OpenCL/CUDA. On Intel that is already there
+(`intel-compute-runtime`); with NVIDIA, `delonix-toolbox install gpu-nvidia`.
 
 ### Backup and recovery
 
