@@ -87,9 +87,28 @@ if [[ -n ${DELONIX_PROFILE_OVERRIDE:-} && -d ${DELONIX_PROFILE_OVERRIDE:-} ]]; t
 fi
 (( SHELL_ONLY )) && CMD=(bash)
 
+# Espaço: o chroot + os pacotes + a ISO passam dos 30 GB. Descobrir isso ao
+# minuto 35, com "No space left on device", é a pior forma de o descobrir.
+LIVRE_GB=$(df -BG --output=avail "$CACHE_DIR" 2>/dev/null | tail -1 | tr -dc '0-9')
+if [[ -n ${LIVRE_GB:-} ]] && (( LIVRE_GB < 35 )); then
+    echo "⚠ só ${LIVRE_GB} GB livres em $CACHE_DIR — são precisos ~35 GB" >&2
+    echo "  (liberta espaço ou aponta DELONIX_CACHE para outro disco)" >&2
+    (( LIVRE_GB < 20 )) && exit 1
+fi
+
+# DNS: se o host resolve por um resolver em loopback (systemd-resolved, dnsmasq),
+# o contentor não lhe chega — a netns dele não tem esse 127.0.0.x. Aprendemos
+# isto no test-distros.sh, e vale exactamente o mesmo aqui.
+DNS_ARGS=()
+if grep -qE '^nameserver\s+127\.' /etc/resolv.conf 2>/dev/null; then
+    echo "→ o host usa um resolver em loopback; a dar DNS explícito ao contentor"
+    DNS_ARGS=(--dns=1.1.1.1 --dns=8.8.8.8)
+fi
+
 echo "→ a construir com $ENGINE (imagem: $IMAGE, kernel: $KERNEL)"
 "${RUN[@]}" run --rm -it \
     --privileged \
+    "${DNS_ARGS[@]}" \
     --cap-add=SYS_ADMIN,MKNOD \
     --device /dev/fuse \
     --security-opt seccomp=unconfined \

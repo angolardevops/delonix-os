@@ -11,7 +11,9 @@
 KERNEL-headers
 KERNEL-bbswitch
 KERNEL-broadcom-wl
-KERNEL-virtualbox-guest-modules
+# NOTA: NÃO existe `KERNEL-virtualbox-guest-modules` na Manjaro — os módulos de
+# convidado do VirtualBox vêm no próprio kernel desde a 5.x. O `virtualbox-guest-utils`
+# (mais abaixo) é o que falta, e esse existe.
 
 ## --- gráficos abertos ------------------------------------------------------------
 xf86-video-amdgpu

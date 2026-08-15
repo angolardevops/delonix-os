@@ -4,6 +4,7 @@
 #   make preview    monta as pré-visualizações dos ecrãs (docs/img)
 #   make verify     valida o perfil (local)
 #   make check      valida o perfil + confirma pacotes nos repos (rede)
+#   make preflight  resolve a transação de pacotes com o pacman (~2 min)
 #   make packages   compila os pacotes da casa (só em Arch/Manjaro)
 #   make iso        constrói a ISO (contentor Manjaro privilegiado)
 #   make shell      abre uma shell no contentor de build
@@ -21,12 +22,12 @@ KERNEL     ?= linux612
 # `**` só funciona com globstar ligado.
 ISO         = $(shell find $(OUT_DIR) -name '*.iso' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 
-.PHONY: all branding preview packages verify check iso shell test qemu-cmd cli-test distro-test clean help
+.PHONY: all branding preview packages verify check preflight iso shell test qemu-cmd cli-test distro-test clean help
 
 all: verify
 
 help:
-	@sed -n '3,14p' $(MAKEFILE_LIST) | sed 's/^# \?//'
+	@sed -n '3,15p' $(MAKEFILE_LIST) | sed 's/^# \?//'
 
 branding:
 	@./scripts/stage-branding.sh
@@ -44,7 +45,12 @@ verify:
 check:
 	@./scripts/verify-profile.sh --online
 
-iso: branding verify
+preflight:
+	@./scripts/preflight.sh
+
+# O preflight corre ANTES: dois minutos a resolver a transação poupam quarenta
+# a descobrir que um pacote não existe.
+iso: branding verify preflight
 	@./scripts/build.sh --kernel $(KERNEL)
 
 shell:

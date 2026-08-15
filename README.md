@@ -214,12 +214,28 @@ make qemu-cmd     # print it again
 make test         # or just boot it
 ```
 
-Before spending an hour on a build:
+## Before spending an hour on a build
+
+Three checks, in order of cost. Each catches a different class of failure, and
+all of them run before `make iso`:
 
 ```bash
-make verify       # files, blocklist, syntax, theme coherence
-make check        # + every package exists, and no declared conflicts
+make verify      # seconds  — files, blocklist, syntax, symlinks, coherence
+make check       # ~10 s    — the packages really exist in Manjaro (not Arch)
+make preflight   # ~2 min   — pacman resolves the whole transaction, dry
 ```
+
+| Check | What it catches | What it does not |
+|---|---|---|
+| `verify` | a missing file, a symlink in an overlay (buildiso follows them and dies), an invented `profile.conf` key, a splash frame-count mismatch | anything about packages |
+| `check` | a name that does not exist in Manjaro **stable** (≠ Arch), an AUR-only package that was not declared, declared conflicts | conflicts that only appear on resolution |
+| `preflight` | what `pacman` would refuse: a real conflict, an impossible dependency, a virtual package waiting for a provider choice | runtime errors inside the chroot |
+
+`preflight` is the most valuable of the three because it is closest to the real
+build: it starts a Manjaro container, syncs the repositories and asks `pacman`
+itself to resolve the full list with `-Sp`, which computes everything and
+downloads nothing. That is how `KERNEL-virtualbox-guest-modules` was found not
+to exist on any Manjaro kernel, after passing every other validation.
 
 `make check` has already caught what usually breaks these projects: `khotkeys`
 (gone in Plasma 6), `p7zip` (now `7zip`), `redis` (Arch moved to `valkey`), and
