@@ -285,6 +285,42 @@ for velho in /var/cache/pacman/pkg/manjaro-live-*.pkg.tar.zst; do
     fi
 done
 
+# --- asserção final, antes de gastar horas -------------------------------------
+# Três builds morreram na fase live por causa de UMA coisa: o pacman a resolver
+# `manjaro-live-base` para a versão de 2024, que não traz o
+# /usr/bin/manjaro-live-setup que o manjaro-tools invoca.
+#
+# Em vez de voltar a deduzir de onde vem, pergunta-se directamente ao pacman que
+# vai fazer o trabalho, e imprime-se o estado que interessa. Se estiver errado,
+# pára aqui — em segundos, não em horas.
+log "estado das bases de dados antes de construir"
+for db in /var/lib/pacman/sync/*.db; do
+    [[ -e $db ]] || continue
+    printf '    %-14s %s\n' "$(basename "$db")" "$(stat -c %y "$db" | cut -d. -f1)"
+done
+
+versao_live=$(pacman -Si manjaro-live-base 2>/dev/null | awk '/^Version/{print $3}')
+printf '    manjaro-live-base resolve para: %s\n' "${versao_live:-DESCONHECIDA}"
+
+if [[ ${versao_live:-} != 2026* ]]; then
+    cat >&2 <<AVISO
+
+  O pacman resolve manjaro-live-base para ${versao_live:-nada}, e não para uma
+  versão de 2026. Só a de 2026 traz /usr/bin/manjaro-live-setup, que é o
+  binário que o manjaro-tools invoca na fase live — sem ele, o build morre lá,
+  ao fim de horas, com um "No such file or directory".
+
+  As datas das bases de dados estão acima. Se forem antigas, os mirrors ou a
+  sincronização falharam. Força um mirror e recomeça a fase live:
+
+      make clean-live
+      DELONIX_MIRROR=https://mirrors.ft.uam.es/manjaro make iso
+
+AVISO
+    exit 1
+fi
+log "manjaro-live-base $versao_live — traz o manjaro-live-setup ✓"
+
 log "buildiso — perfil $PROFILE (edição $EDITION), kernel $KERNEL"
 buildiso "${BUILD_ARGS[@]}"
 

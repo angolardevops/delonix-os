@@ -60,6 +60,21 @@ done
 
 (( SO_CONFIG )) && { printf '  ✓ opções de pacman aplicadas\n' >&2; exit 0; }
 
+# As bases de dados que a IMAGEM já traz são velhas — medido: a extra.db da
+# manjarolinux/base:latest é de 21 de Março e resolve manjaro-live-base para a
+# versão de 2024. Isso não seria grave se ficasse por aqui, mas o `basestrap`
+# COPIA as dbs do contentor para o chroot novo (cp -a, datas incluídas), por
+# isso uma db velha aqui contamina tudo o que se construir a seguir.
+#
+# `-Syy` força o descarregamento, mas só de repositórios que ainda existam. O
+# `community` foi fundido no `extra` há anos: a db dele fica para trás, velha e
+# a apodrecer, e nunca é substituída. Apagamos tudo e recomeçamos.
+printf '  · a apagar as bases de dados que vieram na imagem\n' >&2
+rm -f /var/lib/pacman/sync/*.db /var/lib/pacman/sync/*.db.sig
+# O repositório `community` já não existe: mantê-lo no pacman.conf só produz
+# erros de sincronização e ficheiros de 29 bytes.
+sed -i '/^\[community\]/,+1d' /etc/pacman.conf 2>/dev/null || true
+
 for (( i=1; i<=TENTATIVAS; i++ )); do
     if pacman -Syy --noconfirm >/tmp/delonix-sync.log 2>&1; then
         printf '  ✓ bases de dados sincronizadas (tentativa %d)\n' "$i" >&2
