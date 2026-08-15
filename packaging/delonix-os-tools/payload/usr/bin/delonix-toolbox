@@ -37,6 +37,8 @@ declare -A DESC=(
     [ai]="Claude Code + Antigravity (reinstalar/actualizar)"
     [ai-local]="Ollama: modelos locais na GPU/NPU já activadas"
     [docs]="Hugo e Zola: portais e sites estáticos (o mkdocs já vem)"
+    [video-extra]="Shotcut, Flowblade e corte sem recodificar (LosslessCut)"
+    [legendas]="whisper.cpp + Aegisub: transcrever e legendar na GPU/NPU local"
     [security-audit]="rkhunter + clamav: varredura periódica do posto"
 )
 
@@ -58,6 +60,8 @@ declare -A PKGS=(
     [ai]="claude-code antigravity"
     [ai-local]="ollama"
     [docs]="hugo zola"
+    [video-extra]="shotcut flowblade losslesscut-bin"
+    [legendas]="whisper.cpp-bin aegisub"
     [security-audit]="rkhunter clamav"
 )
 

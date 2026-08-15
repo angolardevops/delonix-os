@@ -32,17 +32,20 @@ kbounce
 knights
 steam
 
-## --- Multimédia pesada ------------------------------------------------------
-vlc                         # ficam os codecs, não o leitor
+## --- Multimédia: leitores e arquivos, não produção --------------------------
+# NOTA: o `kdenlive` e o `audacity` SAÍRAM desta lista. Gravar uma vídeo-aula ou
+# uma demo é trabalho de quem faz plataforma, e a distro passou a trazer o que
+# isso exige (ver a secção 9d do Packages-Desktop). O que continua fora são os
+# leitores generalistas e a gestão de coleções — para rever o que se gravou
+# chega o `mpv`, que é leve.
+vlc                         # ficam os codecs e o mpv, não o VLC
 haruna
-elisa
-kdenlive
-audacity
+elisa                       # leitor de música
 k3b                         # gravar CDs em 2026
 kamoso
 skanlite                    # scanner
 simple-scan
-digikam
+digikam                     # gestão de colecções de fotografia
 
 ## --- Impressão (instalar com `delonix-toolbox install printing`) ------------
 manjaro-printer

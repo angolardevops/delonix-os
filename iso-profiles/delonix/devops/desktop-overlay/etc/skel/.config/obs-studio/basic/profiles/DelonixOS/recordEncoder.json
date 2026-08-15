@@ -1,0 +1,10 @@
+{
+    "bf": 2,
+    "crf": 20,
+    "keyint_sec": 2,
+    "preset": "veryfast",
+    "profile": "high",
+    "rate_control": "CRF",
+    "tune": "zerolatency",
+    "x264opts": ""
+}

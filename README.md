@@ -95,9 +95,13 @@ that is where you look. Full reference: **[CLI documentation](docs/en/cli.md)**.
 |---|---|
 | ![k9s](docs/img/delonixos-5-k9s.png) | ![VMs](docs/img/delonixos-6-vms.png) |
 
-| Observability lab (`lab up observability`) | |
+| Observability lab (`lab up observability`) | Installer (target) |
 |---|---|
-| ![Grafana](docs/img/delonixos-7-grafana.png) | |
+| ![Grafana](docs/img/delonixos-7-grafana.png) | ![Instalador](docs/img/delonixos-8-instalador.png) |
+
+The installer shot is the **target**, not the current state: Calamares still
+wears Manjaro's branding, and that is on the roadmap. Drawing it first is how
+the layout gets decided before anyone writes QML.
 
 Making these paid for itself immediately: rendering the GRUB theme at 720p —
 the resolution a VM boots at — showed the menu overlapping the tagline. The

@@ -1,0 +1,38 @@
+# DelonixOS — Kdenlive pronto a editar uma gravação de ecrã.
+#
+# As três definições que se costuma perder tempo a descobrir:
+#   1. proxies ligados        — editar 1080p60 ou 4K sem a linha de tempo
+#                               engasgar; a exportação usa o original.
+#   2. descodificação por GPU — o VAAPI faz o trabalho que a CPU faria.
+#   3. perfil 1080p60         — o mesmo que o OBS grava; sem conversão no meio.
+
+[env]
+defaultprojectfolder[$e]=$HOME/Vídeos/DelonixOS/projectos
+mltpath[$e]=/usr/share/mlt/profiles
+
+[project]
+defaultprofile=atsc_1080p_60
+proxyparams=-vf scale=960:-2 -c:v libx264 -crf 23 -preset veryfast -c:a aac
+proxyminsize=100
+proxyimageminsize=2000
+enableproxy=true
+generateproxy=true
+externalproxy=false
+videoproxy=true
+
+[timeline]
+autoscroll=true
+showmarkers=true
+snaptopoints=true
+
+[misc]
+usekuiserver=false
+checkfirstprojectclip=false
+crashrecovery=true
+autosavetime=3
+
+[unmanaged]
+# Aceleração: `vaapi` cobre Intel e AMD, que é o que a maioria tem. Numa NVIDIA,
+# muda para `nvdec` em Definições → Configurar Kdenlive → Reprodução.
+hwDecoding=vaapi
+mltthreads=4

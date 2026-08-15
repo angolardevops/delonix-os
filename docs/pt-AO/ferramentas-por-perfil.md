@@ -133,6 +133,31 @@ docker-compose. O `node-exporter` vem com as **métricas de pressão (PSI)**, qu
 são as que explicam de facto o "está lento". Aponta um job para o teu próprio
 `/metrics` e o teu serviço aparece nas mesmas dashboards.
 
+### Gravar e editar conteúdo — sem perder a tarde a configurar
+
+Gravar uma aula ou uma demo é trabalho de quem faz plataforma. A escolha foi
+pela ferramenta **melhor com menos parametrização**, e a configuração que se
+costuma perder uma tarde a descobrir já vem feita:
+
+| Ferramenta | O que já vem configurado |
+|---|---|
+| **OBS Studio** | perfil e **quatro cenas** prontas — *Ecrã completo*, *Ecrã + câmara* (canto inferior direito, 25%), *Só câmara*, *Pausa*. Gravação 1080p60 sem reescalar (texto de terminal ilegível é sempre reescalamento), saída em **mkv** para uma gravação interrompida não se perder, e `Ctrl+F9/F10/F11` para iniciar, parar e pausar. |
+| **Microfone** | o OBS já traz **RNNoise**, portão de ruído e compressor na fonte de áudio; o `easyeffects` traz o mesmo preset para todo o sistema. É o que separa uma aula audível de uma com ventoinha e teclado. |
+| **Kdenlive** | **proxies ligados** (editar 1080p60 sem a linha de tempo engasgar; a exportação usa o original), descodificação por hardware, e o perfil 1080p60 — o mesmo que o OBS grava, sem conversão pelo meio. |
+| **gpu-screen-recorder** | gravar com custo quase nulo: o encoder da GPU faz o trabalho, e a máquina que estás a demonstrar não sofre com isso. |
+| **screenkey** | mostra as teclas premidas no ecrã. Numa aula de terminal é a diferença entre seguir e adivinhar. |
+
+Também: `handbrake` (comprimir para publicar sem decorar flags do ffmpeg),
+`audacity`, `qpwgraph` (ligar fontes de áudio no PipeWire), `gimp` (miniaturas),
+`mpv` (rever), `slop` (seleccionar região em scripts).
+
+A gravar em 4K ou com várias câmaras? `delonix-toolbox install video-extra`.
+Legendas automáticas na GPU/NPU local: `delonix-toolbox install legendas`.
+
+> Isto contradiz a regra "sem multimédia" com que a distro começou, e a
+> contradição é assumida: o que continua fora são os **leitores** generalistas e
+> a gestão de colecções, não a **produção**.
+
 ### Backup e recuperação
 
 | Ferramenta | Papel |

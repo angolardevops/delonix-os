@@ -95,9 +95,13 @@ fica em disco, legível e comparável com `diff`, porque quando um build corre m
 |---|---|
 | ![k9s](docs/img/delonixos-5-k9s.png) | ![VMs](docs/img/delonixos-6-vms.png) |
 
-| Laboratório de observabilidade (`lab up observability`) | |
+| Laboratório de observabilidade (`lab up observability`) | Instalador (alvo) |
 |---|---|
-| ![Grafana](docs/img/delonixos-7-grafana.png) | |
+| ![Grafana](docs/img/delonixos-7-grafana.png) | ![Instalador](docs/img/delonixos-8-instalador.png) |
+
+O ecrã do instalador é o **alvo**, não o estado actual: o Calamares ainda tem o
+branding da Manjaro, e isso está no roteiro. Desenhá-lo primeiro é como se
+decide a disposição antes de alguém escrever QML.
 
 Fazer isto pagou-se logo: ao desenhar o tema do GRUB a 720p — a resolução com
 que uma VM arranca — vi o menu por cima do subtítulo. As posições misturavam

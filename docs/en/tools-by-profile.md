@@ -131,6 +131,31 @@ docker-compose. `node-exporter` is configured with **PSI pressure metrics**, the
 ones that actually explain "the machine feels slow". Point a job at your own
 `/metrics` endpoint and your service appears in the same dashboards.
 
+### Recording and editing content — without losing an afternoon to setup
+
+Recording a lesson or a demo is platform work. The choice was for the tool that
+is **best with the least configuration**, and the setup people usually spend an
+afternoon discovering already ships:
+
+| Tool | What is already configured |
+|---|---|
+| **OBS Studio** | a profile and **four scenes** — *Full screen*, *Screen + camera* (bottom right, 25%), *Camera only*, *Break*. 1080p60 with no rescaling (unreadable terminal text is always rescaling), **mkv** output so an interrupted recording is not lost, and `Ctrl+F9/F10/F11` to start, stop and pause. |
+| **Microphone** | OBS ships **RNNoise**, a noise gate and a compressor on the audio source; `easyeffects` carries the same preset system-wide. It is what separates an audible lesson from one with a fan and a keyboard in it. |
+| **Kdenlive** | **proxies enabled** (edit 1080p60 without the timeline stuttering; the export uses the original), hardware decoding, and the 1080p60 profile — the same one OBS records, so nothing is converted in between. |
+| **gpu-screen-recorder** | record at near-zero cost: the GPU encoder does the work, and the machine you are demonstrating does not suffer for it. |
+| **screenkey** | shows the keys you press on screen. In a terminal lesson that is the difference between following along and guessing. |
+
+Also: `handbrake` (compress for publishing without memorising ffmpeg flags),
+`audacity`, `qpwgraph` (wire audio sources in PipeWire), `gimp` (thumbnails),
+`mpv` (review), `slop` (region select for scripts).
+
+Recording in 4K or with several cameras? `delonix-toolbox install video-extra`.
+Automatic captions on the local GPU/NPU: `delonix-toolbox install legendas`.
+
+> This contradicts the "no multimedia" rule the distro started with, and the
+> contradiction is deliberate: what stays out are the general-purpose
+> **players** and collection managers, not **production**.
+
 ### Backup and recovery
 
 | Tool | Role |

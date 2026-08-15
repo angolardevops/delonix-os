@@ -430,6 +430,72 @@ def desktop_grafana(assets: Path, larg=1280, alt=720) -> Image.Image:
     return rodape(img, "montagem (dashboard ilustrativa) — o Grafana real vem do `lab up observability`")
 
 
+# ----------------------------------------------------------------- Instalador
+def calamares(assets: Path, larg=1280, alt=720) -> Image.Image:
+    """
+    O primeiro ecrã que um utilizador novo vê — e o único que AINDA tem o
+    branding da Manjaro. Esta montagem é o alvo, não o estado actual: serve
+    para desenhar o branding do Calamares, que está no roteiro.
+    """
+    img = _fundo(assets, larg, alt)
+    x, y, w, h = 190, 90, 900, 520
+    d = _janela(img, (x, y, w, h), "Instalar o DelonixOS", None, fundo=(22, 25, 30, 252))
+
+    # coluna de passos, à esquerda
+    d.rectangle([x + 1, y + 31, x + 250, y + h - 1], fill=(18, 21, 26, 255))
+    passos = [("Bem-vindo", "feito"), ("Localização", "feito"), ("Teclado", "feito"),
+              ("Partições", "actual"), ("Utilizador", "por fazer"),
+              ("Resumo", "por fazer"), ("Instalar", "por fazer")]
+    yy = y + 60
+    for nome, estado in passos:
+        if estado == "actual":
+            d.rectangle([x + 1, yy - 8, x + 250, yy + 22], fill=(30, 34, 41, 255))
+            d.rectangle([x + 1, yy - 8, x + 4, yy + 22], fill=RED)
+        cor_bola = VERDE if estado == "feito" else (RED if estado == "actual" else (70, 76, 84))
+        d.ellipse([x + 22, yy + 2, x + 32, yy + 12], fill=cor_bola)
+        d.text((x + 46, yy), nome, font=fonte("regular", 13),
+               fill=FG if estado != "por fazer" else MUTED)
+        yy += 34
+
+    # painel principal
+    logo = Image.open(assets / "plymouth/themes/delonix/logo.png").resize((56, 56))
+    img.paste(logo, (x + 286, y + 56), logo)
+    d.text((x + 356, y + 62), "DelonixOS 1.0", font=fonte("bold", 22), fill=FG)
+    d.text((x + 356, y + 92), "DevOps · SRE · Platform Engineering",
+           font=fonte("bold", 11), fill=RED)
+
+    d.text((x + 286, y + 140), "Onde queres instalar?", font=fonte("bold", 15), fill=FG)
+    opcoes = [
+        ("Apagar o disco e instalar", "recomendado · Btrfs com instantâneos", True),
+        ("Instalar ao lado do sistema actual", "mantém o que já está instalado", False),
+        ("Particionamento manual", "para quem sabe o que quer", False),
+    ]
+    yy = y + 176
+    for titulo, sub, sel in opcoes:
+        d.rounded_rectangle([x + 286, yy, x + w - 40, yy + 62], radius=8,
+                            fill=(30, 34, 41, 255) if sel else (24, 27, 31, 255),
+                            outline=RED if sel else BORDER, width=2 if sel else 1)
+        d.ellipse([x + 304, yy + 24, x + 318, yy + 38],
+                  outline=RED if sel else (90, 96, 104), width=2,
+                  fill=RED if sel else None)
+        d.text((x + 334, yy + 14), titulo, font=fonte("bold", 13), fill=FG)
+        d.text((x + 334, yy + 34), sub, font=fonte("regular", 11), fill=MUTED)
+        yy += 74
+
+    d.text((x + 286, yy + 8), "NVMe · Samsung SSD 990 PRO 2TB · 1,86 TiB livres",
+           font=fonte("mono", 11), fill=MUTED)
+
+    # botões
+    d.rounded_rectangle([x + w - 300, y + h - 62, x + w - 190, y + h - 24],
+                        radius=8, fill=(30, 34, 41, 255), outline=BORDER)
+    d.text((x + w - 275, y + h - 51), "Anterior", font=fonte("regular", 13), fill=MUTED)
+    d.rounded_rectangle([x + w - 170, y + h - 62, x + w - 40, y + h - 24], radius=8, fill=RED)
+    d.text((x + w - 130, y + h - 51), "Seguinte", font=fonte("bold", 13), fill=(255, 255, 255))
+
+    _painel(img, assets, activo=-1)
+    return rodape(img, "montagem: é o ALVO do branding do Calamares, ainda por fazer — não é uma captura")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     raiz = Path(__file__).resolve().parent.parent
@@ -445,7 +511,7 @@ def main() -> None:
     for nome, fn in (("1-grub", grub), ("2-plymouth", plymouth),
                      ("3-sddm", sddm), ("4-desktop", desktop),
                      ("5-k9s", desktop_k9s), ("6-vms", desktop_virt),
-                     ("7-grafana", desktop_grafana)):
+                     ("7-grafana", desktop_grafana), ("8-instalador", calamares)):
         img = fn(assets)
         destino = out / f"delonixos-{nome}.png"
         img.save(destino)
