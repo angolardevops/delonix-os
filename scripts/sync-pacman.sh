@@ -17,12 +17,48 @@ set -uo pipefail
 
 TENTATIVAS=${DELONIX_SYNC_TENTATIVAS:-4}
 
-# O default são 5 descargas em paralelo, e é aí que o resolver se afoga.
-if grep -q '^ParallelDownloads' /etc/pacman.conf 2>/dev/null; then
-    sed -i 's/^ParallelDownloads.*/ParallelDownloads = 2/' /etc/pacman.conf
-else
-    sed -i '/^\[options\]/a ParallelDownloads = 2' /etc/pacman.conf
-fi
+# `--so-config`: aplicar as opções e sair, sem sincronizar. Serve para voltar a
+# correr DEPOIS do manjaro-tools ser instalado — as configurações de pacman dele
+# não existem antes disso, e são precisamente as que o buildiso usa para
+# instalar dentro dos chroots.
+SO_CONFIG=0
+[[ ${1:-} == --so-config ]] && SO_CONFIG=1
+
+# Estas duas opções vão para TODAS as configurações de pacman em jogo: a do
+# contentor E as do manjaro-tools, que são as que o buildiso usa para instalar
+# dentro dos chroots. Mudar só a primeira não chega — foi o erro que já custou
+# dois builds noutro sítio deste ficheiro.
+CONFS=(/etc/pacman.conf
+       /usr/share/manjaro-tools/pacman-default.conf
+       /usr/share/manjaro-tools/pacman-multilib.conf)
+
+for conf in "${CONFS[@]}"; do
+    [[ -f $conf ]] || continue
+
+    # 1. Menos descargas em paralelo. O default são 5, e dezenas de ligações
+    #    simultâneas são o que faz o resolver de DNS começar a recusar.
+    if grep -q '^ParallelDownloads' "$conf"; then
+        sed -i 's/^ParallelDownloads.*/ParallelDownloads = 2/' "$conf"
+    else
+        sed -i '/^\[options\]/a ParallelDownloads = 2' "$conf"
+    fi
+
+    # 2. Desligar o tempo-limite de descarga. Por omissão o pacman aborta a
+    #    TRANSAÇÃO INTEIRA quando um ficheiro fica abaixo de 1 byte/s durante
+    #    10 segundos:
+    #
+    #      error: failed retrieving file 'systemd-libs-261.2-1-x86_64.pkg.tar.zst.sig'
+    #             Operation too slow. Less than 1 bytes/sec transferred
+    #      error: failed to commit transaction (unexpected error)
+    #
+    #    Numa ligação a ~120 KB/s com soluços, isso acontece a meio de uma
+    #    descarga de milhares de pacotes e deita fora tudo o que já foi feito.
+    #    Uma pausa não é uma falha; deixá-lo esperar é o comportamento correcto.
+    grep -q '^DisableDownloadTimeout' "$conf" ||
+        sed -i '/^\[options\]/a DisableDownloadTimeout' "$conf"
+done
+
+(( SO_CONFIG )) && { printf '  ✓ opções de pacman aplicadas\n' >&2; exit 0; }
 
 for (( i=1; i<=TENTATIVAS; i++ )); do
     if pacman -Syy --noconfirm >/tmp/delonix-sync.log 2>&1; then

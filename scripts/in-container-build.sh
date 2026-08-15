@@ -61,6 +61,11 @@ pacman -Su --noconfirm --needed \
     squashfs-tools dosfstools libisoburn grub edk2-shell erofs-utils \
     python python-pillow
 
+# O manjaro-tools acabou de ser instalado e trouxe as SUAS configurações de
+# pacman — que são as que o buildiso usa dentro dos chroots. As opções que
+# aplicámos antes não lhes chegaram, porque estes ficheiros ainda não existiam.
+bash "$SCRIPTS/sync-pacman.sh" --so-config
+
 # --- 2. iso-profiles oficial (para o `shared/`) -------------------------------
 if [[ ! -d $PROFILES_DIR/.git ]]; then
     log "a clonar o iso-profiles oficial"
