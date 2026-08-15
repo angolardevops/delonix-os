@@ -1,0 +1,5 @@
+# Indexação de ficheiros DESLIGADA: num posto com repos grandes e clusters
+# locais, o baloo é a causa nº 1 de I/O fantasma. Quem quiser, activa no
+# Configurações do Sistema.
+[Basic Settings]
+Indexing-Enabled=false

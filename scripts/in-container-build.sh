@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# DelonixOS — o build propriamente dito. Corre DENTRO do contentor Manjaro
+# (ou directamente num host Manjaro, como root).
+#
+# Passos:
+#   1. actualizar o sistema base e instalar o manjaro-tools
+#   2. buscar o iso-profiles oficial (só para reaproveitar o `shared/`)
+#   3. injectar o nosso perfil delonix/devops
+#   4. compilar os pacotes da casa (branding/settings/tools) para o repo local
+#   5. buscar os binários do Delonix Runtime para o overlay
+#   6. buildiso
+set -euo pipefail
+
+KERNEL=${DELONIX_KERNEL:-linux612}
+[[ ${1:-} == --kernel ]] && KERNEL=$2
+
+WORK=/work
+# Os scripts são executados a partir de uma CÓPIA (feita pelo build.sh), nunca
+# directamente de /work. Motivo: o bash lê o script aos pedaços enquanto corre;
+# se alguém editar o ficheiro no repositório a meio de um build de 40 minutos,
+# o bash retoma no mesmo offset e executa lixo ("s: command not found").
+SCRIPTS=${DELONIX_SCRIPTS:-$WORK/scripts}
+PROFILES_DIR=/usr/share/manjaro-tools/iso-profiles
+UPSTREAM=https://gitlab.manjaro.org/profiles-and-settings/iso-profiles.git
+
+log() { printf '\n\e[1m→ %s\e[0m\n' "$*"; }
+
+# --- 1. dependências ----------------------------------------------------------
+log "a sincronizar pacman e instalar manjaro-tools"
+pacman-key --init 2>/dev/null || true
+pacman-key --populate archlinux manjaro 2>/dev/null || true
+pacman -Syu --noconfirm --needed \
+    manjaro-tools-iso manjaro-tools-base git rsync curl \
+    squashfs-tools dosfstools libisoburn grub edk2-shell erofs-utils \
+    python python-pillow
+
+# --- 2. iso-profiles oficial (para o `shared/`) -------------------------------
+if [[ ! -d $PROFILES_DIR/.git ]]; then
+    log "a clonar o iso-profiles oficial"
+    rm -rf "$PROFILES_DIR"
+    git clone --depth 1 "$UPSTREAM" "$PROFILES_DIR"
+fi
+
+# --- 3. injectar o perfil Delonix ---------------------------------------------
+log "a injectar o perfil delonix/devops"
+rm -rf "$PROFILES_DIR/delonix"
+rsync -a "$WORK/iso-profiles/delonix/" "$PROFILES_DIR/delonix/"
+
+# `shared/` traz Packages-Live/Root comuns da Manjaro. Ficamos com o nosso, mas
+# o buildiso espera a directoria — por isso apontamos para a do upstream.
+[[ -d $PROFILES_DIR/shared ]] || { echo "iso-profiles sem shared/ — abortar"; exit 1; }
+
+# --- 3b. repositório local com os pacotes do AUR --------------------------------
+# claude-code, antigravity, cloud-hypervisor, gcloud e companhia só existem no
+# AUR, e o pacman do buildiso só instala de repositórios. Compilamo-los aqui.
+AUR_REPO=/var/cache/delonix-aur
+if [[ ${DELONIX_SKIP_AUR:-0} != 1 ]]; then
+    bash "$SCRIPTS/build-aur-repo.sh" "$WORK/packages/aur.list" "$AUR_REPO"
+
+    # O `user-repos.conf` do manjaro-tools recusa repositórios file:// de
+    # propósito (check_user_repos_conf → "Using local repositories is not
+    # supported!"), por isso acrescentamos a secção directamente à configuração
+    # de pacman que o buildiso usa.
+    for conf in /usr/share/manjaro-tools/pacman-default.conf \
+                /usr/share/manjaro-tools/pacman-multilib.conf; do
+        [[ -f $conf ]] || continue
+        grep -q '\[delonix-aur\]' "$conf" || cat >>"$conf" <<EOF
+
+[delonix-aur]
+SigLevel = Optional TrustAll
+Server = file://$AUR_REPO
+EOF
+    done
+
+    # O que não compilou é comentado nas listas — mais vale uma ISO sem uma
+    # ferramenta do que um build a abortar aos 20 minutos.
+    python3 "$SCRIPTS/filter-missing-aur.py" \
+        "$PROFILES_DIR/delonix/devops" "$AUR_REPO"
+else
+    log "AUR ignorado (DELONIX_SKIP_AUR=1) — a comentar esses pacotes"
+    python3 "$SCRIPTS/filter-missing-aur.py" \
+        "$PROFILES_DIR/delonix/devops" /var/empty
+fi
+
+# --- 3c. pacotes da casa (branding, settings, tools) ---------------------------
+# Isto é o que faz o branding e a afinação chegarem a quem JÁ instalou: em vez
+# de ficheiros copiados para dentro da imagem, pacotes com versão num repo.
+DELONIX_REPO=/var/cache/delonix-repo
+bash "$SCRIPTS/build-os-packages.sh" "$DELONIX_REPO"
+
+for conf in /usr/share/manjaro-tools/pacman-default.conf \
+            /usr/share/manjaro-tools/pacman-multilib.conf; do
+    [[ -f $conf ]] || continue
+    grep -q '\[delonix\]' "$conf" || cat >>"$conf" <<EOF
+
+[delonix]
+SigLevel = Optional TrustAll
+Server = file://$DELONIX_REPO
+EOF
+done
+
+# --- 4. binários do Delonix Runtime -------------------------------------------
+log "a buscar binários do Delonix (opcional — falha não trava o build)"
+bash "$SCRIPTS/fetch-delonix-bins.sh" \
+    "$PROFILES_DIR/delonix/devops/desktop-overlay/usr/local/bin" || true
+
+# --- 5. permissões nos scripts do overlay -------------------------------------
+chmod 0755 "$PROFILES_DIR"/delonix/devops/desktop-overlay/usr/local/bin/* \
+           "$PROFILES_DIR"/delonix/devops/desktop-overlay/usr/local/libexec/* 2>/dev/null || true
+
+# --- 6. configuração do manjaro-tools -----------------------------------------
+# Só chaves que o manjaro-tools lê (lib/util.sh). `iso_label` é calculado por
+# `get_iso_label()` a partir do dist_name — não é configurável.
+log "a configurar o manjaro-tools"
+install -Dm644 /dev/stdin /etc/manjaro-tools/manjaro-tools.conf <<EOF
+# gerado pelo build do DelonixOS
+branch=stable
+dist_name="DelonixOS"
+dist_release="1.0"
+dist_codename="Acacia"
+dist_branding="DELONIX"
+iso_name="delonixos"
+iso_compression=zstd
+kernel="$KERNEL"
+EOF
+
+# O run_dir (onde o buildiso procura perfis) vem de ~/.config/manjaro-tools/
+# iso-profiles.conf; o default só se aplica se este ficheiro não existir.
+install -Dm644 /dev/stdin /root/.config/manjaro-tools/iso-profiles.conf <<EOF
+run_dir=$PROFILES_DIR
+EOF
+
+# --- 7. construir --------------------------------------------------------------
+# `-p` recebe o NOME do perfil, não o caminho: o buildiso descobre a edição com
+# `find ${run_dir} -maxdepth 2 -name devops` → delonix/devops.
+log "buildiso — perfil devops (edição delonix), kernel $KERNEL"
+buildiso -f -p devops -k "$KERNEL" -b stable
+
+iso=$(find /var/cache/manjaro-tools/iso -name '*.iso' -printf '%T@ %p\n' 2>/dev/null |
+      sort -rn | head -1 | cut -d' ' -f2-)
+if [[ -n $iso ]]; then
+    log "ISO pronta: $(basename "$iso")  ($(du -h "$iso" | cut -f1))"
+    # O caminho dentro do contentor não serve ao utilizador: mapeia para ./out.
+    bash "$SCRIPTS/qemu-cmd.sh" "$WORK/out/${iso#/var/cache/manjaro-tools/iso/}" 2>/dev/null ||
+        printf '\n  A ISO está em ./out — para arrancar:  make test\n\n'
+else
+    log "build terminou sem ISO — vê o log em /var/log/manjaro-tools"
+    exit 1
+fi

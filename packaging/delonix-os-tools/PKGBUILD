@@ -1,0 +1,28 @@
+# Maintainer: Delonix / N'GolaCloud <eng@ngolacloud.com>
+#
+# As ferramentas da casa: `delonix-doctor` (diagnóstico) e `delonix-toolbox`
+# (perfis opcionais). São as que mais vão mudar — cada ferramenta nova do
+# catálogo é uma linha aqui — e por isso são as que mais precisam de chegar
+# actualizadas a quem já instalou.
+#
+# Vão para /usr/bin (e não /usr/local/bin) porque agora são geridas pelo
+# pacman: /usr/local é território de quem administra a máquina, não nosso.
+
+pkgname=delonix-os-tools
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="DelonixOS — delonix-doctor (diagnóstico do posto) e delonix-toolbox (perfis a pedido)"
+arch=('any')
+url="https://ngolacloud.com"
+license=('GPL-3.0-or-later')
+depends=('bash' 'pacman')
+optdepends=('yay: instalar perfis que vivem no AUR'
+            'curl: descarregar o Delonix Runtime'
+            'libvirt: verificações de virtualização no delonix-doctor')
+source=("delonix-os-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    cp -a "$srcdir/tools/." "$pkgdir/"
+    chmod 0755 "$pkgdir/usr/bin/"*
+}

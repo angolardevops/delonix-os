@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Delonix
+Description=DelonixOS boot splash — marca animada (anéis de sinal) com barra de progresso
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/delonix
+ScriptFile=/usr/share/plymouth/themes/delonix/delonix.script

@@ -1,0 +1,29 @@
+
+  DelonixOS — sessão live
+  DevOps · SRE · Platform Engineering
+
+  Estás num ambiente live: nada é gravado no disco até instalares.
+
+    calamares                instalar no disco
+    delonix-doctor           diagnóstico (rootless, KVM, GPU/NPU, I/O, rede)
+    delonix-toolbox list     extras a pedido (Java, ROCm/CUDA, Azure, VS Code)
+
+  Já cá dentro, configurado:
+    linguagens  Rust (mold+sccache), Go, Python (uv), Node — sem instalar nada
+    dados       PostgreSQL, Redis, MongoDB  →  delonix-toolbox db start postgres
+    k8s         kubectl helm k9s kubectx kustomize stern argocd kind kubeconform
+    containers  delonix, podman/buildah/skopeo (rootless) + CLI do docker
+    VMs         KVM/libvirt, virt-manager, qemu, cloud-hypervisor (nested activo)
+    cloud       aws, gcloud (+ plugin GKE)
+    IaC         opentofu, ansible, packer, cue
+    backup      restic, rclone, snapper (instantâneo antes de cada actualização)
+    dados/logs  duckdb, miller, visidata, jless
+    browsers    Firefox, Chrome, Edge (perfis em RAM com o psd)
+    IA          claude (Claude Code), antigravity
+    consola     tmux (sessão "delonix"), kitty, zsh + starship, neovim
+
+  Afinado de fábrica: zram, cgroups delegados, inotify, BBR+fq, escalonador de
+  I/O por tipo de disco, OpenCL/NPU, KDE sem animações (eyecandy on para repor).
+
+  Utilizador live: delonix / delonix   (sudo sem password)
+

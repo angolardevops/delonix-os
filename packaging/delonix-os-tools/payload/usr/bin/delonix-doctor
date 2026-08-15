@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# DelonixOS — diagnóstico do posto de trabalho.
+#
+# Responde a uma pergunta só: "esta máquina está pronta para correr containers
+# rootless, clusters locais e ferramentas de plataforma?"
+# Sai com 0 se tudo passou, 1 se houver falhas (dá para usar em CI de imagem).
+set -uo pipefail
+
+RED=$'\e[31m'; GRN=$'\e[32m'; YLW=$'\e[33m'; DIM=$'\e[2m'; RST=$'\e[0m'
+fails=0; warns=0
+
+section() { printf '\n%s── %s ─────────────────────────────────%s\n' "$DIM" "$1" "$RST"; }
+ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$1"; }
+bad()  { printf '  %s✗%s %s\n' "$RED" "$RST" "$1"; ((fails++)); }
+warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$1"; ((warns++)); }
+
+check_sysctl() {
+    local key=$1 min=$2 actual
+    actual=$(sysctl -n "$key" 2>/dev/null) || { warn "$key não existe neste kernel"; return; }
+    if (( actual >= min )); then ok "$key = $actual"; else bad "$key = $actual (esperado >= $min)"; fi
+}
+
+section "Identidade"
+printf '  %s\n' "$(grep -m1 PRETTY_NAME /etc/os-release | cut -d'"' -f2)"
+printf '  kernel %s · %s\n' "$(uname -r)" "$(uname -m)"
+[[ -r /etc/delonix-release ]] && printf '  %s\n' "$(cat /etc/delonix-release)"
+
+section "Containers rootless"
+if [[ $(stat -fc %T /sys/fs/cgroup 2>/dev/null) == cgroup2fs ]]; then
+    ok "cgroup v2 unificado"
+else
+    bad "cgroup v2 em falta (o rootless com limites não funciona)"
+fi
+
+controllers=$(cat "/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers" 2>/dev/null || echo "")
+for c in cpu memory pids io; do
+    if [[ " $controllers " == *" $c "* ]]; then ok "controlador delegado: $c"
+    else bad "controlador NÃO delegado: $c (ver /etc/systemd/system/user@.service.d/)"; fi
+done
+
+if grep -q "^$(id -un):" /etc/subuid && grep -q "^$(id -un):" /etc/subgid; then
+    ok "subuid/subgid: $(grep -m1 "^$(id -un):" /etc/subuid)"
+else
+    bad "sem intervalo subuid/subgid (corre: sudo /usr/lib/delonix/firstboot)"
+fi
+
+check_sysctl user.max_user_namespaces 1000
+command -v newuidmap >/dev/null && ok "newuidmap presente" || bad "newuidmap em falta (pacote shadow)"
+[[ -e /dev/fuse ]] && ok "/dev/fuse disponível (fuse-overlayfs)" || warn "/dev/fuse em falta"
+
+section "Limites do kernel"
+check_sysctl fs.inotify.max_user_instances 4096
+check_sysctl fs.inotify.max_user_watches 262144
+check_sysctl vm.max_map_count 262144
+nofile=$(ulimit -n)
+(( nofile >= 65536 )) && ok "ulimit -n = $nofile" || bad "ulimit -n = $nofile (esperado >= 65536)"
+
+section "Virtualização"
+if [[ -e /dev/kvm ]]; then
+    if [[ -r /dev/kvm && -w /dev/kvm ]]; then ok "/dev/kvm acessível"
+    else bad "/dev/kvm existe mas sem permissão (falta estar no grupo kvm?)"; fi
+else
+    warn "/dev/kvm ausente — microVMs e DKS local não arrancam (VT-x/AMD-V na BIOS?)"
+fi
+
+nested=$(cat /sys/module/kvm_intel/parameters/nested 2>/dev/null ||
+         cat /sys/module/kvm_amd/parameters/nested 2>/dev/null || echo "")
+case $nested in
+    Y|1) ok "virtualização aninhada activa (labs dentro de VMs)" ;;
+    "")  warn "módulo kvm_intel/kvm_amd não carregado" ;;
+    *)   bad "nested=$nested — labs dentro de VMs vão correr em emulação" ;;
+esac
+
+id -nG | grep -qw libvirt && ok "no grupo libvirt" || bad "fora do grupo libvirt (VMs pedem sudo)"
+if systemctl is-active --quiet libvirtd.socket || systemctl is-active --quiet libvirtd; then
+    ok "libvirt disponível"
+    if virsh --connect qemu:///system net-info default 2>/dev/null | grep -q 'Active:.*yes'; then
+        ok "rede libvirt 'default' activa"
+    else
+        warn "rede libvirt 'default' inactiva (virsh net-start default)"
+    fi
+else
+    bad "libvirt não está a correr (systemctl enable --now libvirtd.socket)"
+fi
+command -v cloud-hypervisor >/dev/null && ok "cloud-hypervisor presente" ||
+    warn "cloud-hypervisor em falta (delonix-toolbox install virt-extra)"
+
+# O daemon do docker deve estar DESLIGADO: o CLI fala com o podman rootless.
+if systemctl is-active --quiet docker; then
+    warn "dockerd está a correr — nesta distro o CLI aponta ao podman rootless"
+else
+    if command -v docker >/dev/null; then
+        if docker info &>/dev/null; then ok "docker CLI a falar com o podman rootless"
+        else warn "docker CLI sem backend (arranca: systemctl --user start podman.socket)"; fi
+    fi
+fi
+
+section "Ferramentas"
+missing=()
+for t in kubectl helm k9s kubectx tofu ansible podman buildah skopeo git jq yq \
+         age sops trivy cosign nvim rg fd starship zsh tmux docker \
+         aws gcloud virsh qemu-system-x86_64 perf bpftrace \
+         cargo go python uv node psql valkey-cli restic rclone just duckdb; do
+    command -v "$t" >/dev/null || missing+=("$t")
+done
+(( ${#missing[@]} == 0 )) && ok "kit base completo" || bad "em falta: ${missing[*]}"
+
+for t in delonix delonixctl claude antigravity; do
+    if command -v "$t" >/dev/null; then
+        ok "$t $("$t" --version 2>/dev/null | head -1)"
+    else
+        warn "$t não instalado (corre: delonix-toolbox install delonix|ai)"
+    fi
+done
+
+if [[ -n ${TMUX:-} ]]; then ok "sessão dentro do tmux"
+else warn "fora do tmux (DELONIX_NO_TMUX activo, ou terminal não interactivo)"; fi
+
+section "Aceleração (GPU / NPU / vídeo)"
+if command -v clinfo >/dev/null; then
+    platforms=$(clinfo -l 2>/dev/null | grep -c 'Platform #' || echo 0)
+    (( platforms > 0 )) && ok "OpenCL: $platforms plataforma(s)" ||
+        warn "OpenCL sem plataformas (GPU sem driver de compute?)"
+fi
+[[ -e /dev/dri/renderD128 ]] && ok "render node presente (VA-API, compute)" ||
+    warn "sem /dev/dri/renderD128 — vídeo e compute vão pela CPU"
+if compgen -G "/dev/accel/accel*" >/dev/null; then
+    ok "NPU visível"
+else
+    warn "sem NPU (normal fora dos Core Ultra / Ryzen AI)"
+fi
+
+section "Afinação de I/O e rede"
+for dev in /sys/block/nvme*n*/queue/scheduler /sys/block/sd*/queue/scheduler; do
+    [[ -r $dev ]] || continue
+    disk=$(basename "$(dirname "$(dirname "$dev")")")
+    sched=$(grep -oP '\[\K[^]]+' "$dev" 2>/dev/null)
+    case $disk:$sched in
+        nvme*:none|sd*:mq-deadline|sd*:bfq) ok "$disk usa $sched" ;;
+        *) warn "$disk usa $sched (esperado none/mq-deadline/bfq — ver udev)" ;;
+    esac
+done
+qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
+cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+[[ $cc == bbr && $qdisc == fq ]] && ok "rede: $cc + $qdisc" ||
+    warn "rede: ${cc:-?} + ${qdisc:-?} (o BBR sem fq perde o pacing)"
+systemctl is-active --quiet ananicy-cpp && ok "ananicy-cpp a dar prioridade ao foco" ||
+    warn "ananicy-cpp parado"
+
+section "Desktop"
+anim=$(kreadconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 2>/dev/null)
+[[ $anim == 0 ]] && ok "animações desligadas (eyecandy on para repor)" ||
+    warn "animações a ${anim:-?} — custa GPU e latência"
+
+section "Bases de dados (paradas até serem precisas)"
+for u in postgresql valkey mongodb; do
+    st=$(systemctl is-active "$u" 2>/dev/null)
+    if [[ $st == active ]]; then
+        warn "$u a correr (consome RAM; delonix-toolbox db stop ${u/postgresql/postgres})"
+    else
+        printf '  %s·%s %-12s parada\n' "$DIM" "$RST" "$u"
+    fi
+done
+
+section "Rede"
+ip -br link | awk '{printf "  %-14s %s\n", $1, $2}'
+if command -v resolvectl >/dev/null; then
+    printf '  DNS: %s\n' "$(resolvectl status 2>/dev/null | awk '/DNS Servers/{print $3; exit}')"
+fi
+
+section "Armazenamento"
+df -h / /home 2>/dev/null | awk 'NR==1 || /\//{printf "  %s\n", $0}' | head -4
+swapon --show=NAME,TYPE,SIZE,USED --noheadings 2>/dev/null | sed 's/^/  swap: /'
+
+printf '\n'
+if (( fails == 0 )); then
+    printf '%s✓ tudo pronto%s (%d avisos)\n' "$GRN" "$RST" "$warns"
+    exit 0
+fi
+printf '%s✗ %d verificações falharam%s (%d avisos)\n' "$RED" "$fails" "$RST" "$warns"
+exit 1

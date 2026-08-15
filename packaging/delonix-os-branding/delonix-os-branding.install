@@ -1,0 +1,30 @@
+post_install() {
+    /usr/lib/delonix/apply-plymouth || true
+    /usr/lib/delonix/apply-grub || true
+    cat <<'EOF'
+
+  DelonixOS — identidade visual instalada.
+
+  Se o splash de arranque não mudar, o tema não entrou no initramfs:
+      sudo plymouth-set-default-theme -R delonix
+
+  Tema do desktop (por utilizador, uma vez):
+      lookandfeeltool -a org.delonix.desktop
+
+EOF
+}
+
+post_upgrade() {
+    /usr/lib/delonix/apply-plymouth || true
+    /usr/lib/delonix/apply-grub || true
+}
+
+post_remove() {
+    # Não deixamos o sistema a apontar para um tema que já não existe: sem
+    # splash é feio, sem arranque é pior.
+    if command -v plymouth-set-default-theme >/dev/null; then
+        plymouth-set-default-theme -R bgrt 2>/dev/null ||
+            plymouth-set-default-theme -R details 2>/dev/null || true
+    fi
+    sed -i 's|^GRUB_THEME=.*delonix.*|#&|' /etc/default/grub 2>/dev/null || true
+}

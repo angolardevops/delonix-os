@@ -1,0 +1,15 @@
+# DelonixOS — pacotes APENAS do ambiente live (não vão para o sistema
+# instalado). Curto de propósito: quanto menor, mais rápido o live arranca.
+# Nomes alinhados com o `shared/Packages-Live` oficial da Manjaro.
+calamares
+kcrash
+manjaro-live-skel                   # [manjaro]
+manjaro-live-systemd                # [manjaro]
+manjaro-rescue                      # [manjaro]
+grub-theme-live-manjaro             # [manjaro] substituído no boot pelo tema Delonix
+mkinitcpio-nfs-utils
+gparted
+gsmartcontrol
+testdisk
+btrfs-assistant
+timeshift

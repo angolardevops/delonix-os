@@ -1,0 +1,90 @@
+# DelonixOS — o que sai em relação à Manjaro KDE stock, e porquê.
+#
+# Este ficheiro é DOCUMENTAÇÃO + rede de segurança: o scripts/verify-profile.sh
+# falha o build se alguma destas entradas reaparecer nas listas de pacotes
+# (podem entrar por dependência de um meta-pacote, e é isso que queremos travar).
+#
+# Formato: <pacote>  # <motivo>
+
+## --- Suite de escritório (~1.6 GB) ------------------------------------------
+libreoffice-still           # não é um posto de escritório
+libreoffice-fresh
+thunderbird                 # e-mail vive no browser/consola
+hunspell-en_us
+
+## --- PIM / Akonadi (~700 MB + um servidor MySQL a correr por baixo) ---------
+kmail
+korganizer
+kaddressbook
+kontact
+akonadi
+kdepim-addons
+kdepim-runtime
+kalendar
+merkuro
+
+## --- Jogos ------------------------------------------------------------------
+kpat
+kmahjongg
+kmines
+ksudoku
+kbounce
+knights
+steam
+
+## --- Multimédia pesada ------------------------------------------------------
+vlc                         # ficam os codecs, não o leitor
+haruna
+elisa
+kdenlive
+audacity
+k3b                         # gravar CDs em 2026
+kamoso
+skanlite                    # scanner
+simple-scan
+digikam
+
+## --- Impressão (instalar com `delonix-toolbox install printing`) ------------
+manjaro-printer
+cups
+cups-pdf
+hplip
+system-config-printer
+print-manager
+
+## --- Indexação e telemetria (matam I/O em repos grandes) --------------------
+baloo                       # desactivado por config; ver desktop-overlay
+baloo-widgets
+plasma-welcome
+kuserfeedback
+
+## --- Duplicados / redundantes ----------------------------------------------
+kwrite                      # temos kate
+kfind                       # temos fd/ripgrep
+konqueror
+kgpg                        # temos gnupg + kleopatra a pedido
+yakuake                     # temos kitty + tmux
+plasma-bigscreen
+discover                    # temos pamac-cli/octopi + flatpak em CLI
+packagekit-qt6
+
+## --- Ainda fora da ISO (a pedido, via delonix-toolbox) ----------------------
+# Rust, Go, Python e Node PASSARAM a vir instalados e configurados — o objectivo
+# deixou de ser a imagem mais pequena e passou a ser "abrir o portátil e
+# construir". O que fica de fora é o que serve casos específicos:
+jdk-openjdk                 # Java a pedido (lang-java)
+azure-cli                   # AWS e GCP vêm na ISO; Azure a pedido
+terraform                   # licença BUSL: por omissão vai opentofu
+code                        # VS Code a pedido (o IDE da casa é o antigravity)
+
+# NOTA: `docker` DEIXOU de estar bloqueado — o CLI vem na ISO por pedido
+# explícito. O que continua proibido é o daemon: docker.service e docker.socket
+# ficam desactivados (profile.conf) e o DOCKER_HOST aponta ao podman rootless.
+# Ligar o dockerd é uma decisão consciente de quem administra a máquina.
+
+## --- conflitos resolvidos (não voltar a acrescentar) ------------------------
+# O gestor de energia desta distro é o `tuned` + `tuned-ppd`. Estes dois foram
+# removidos por conflito real, não por peso — o build falha se voltarem:
+tlp                         # DECLARA conflito com o tuned (unresolvable package conflicts)
+tlp-rdw
+power-profiles-daemon       # substituído pelo tuned-ppd, que provides= o mesmo

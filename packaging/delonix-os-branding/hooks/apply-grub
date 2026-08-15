@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Garante o tema Delonix no /etc/default/grub sem tomar posse do ficheiro
+# (é do pacote `grub`, e o utilizador também lá mexe).
+#
+# Idempotente: correr dez vezes dá o mesmo que correr uma.
+set -euo pipefail
+
+CONF=/etc/default/grub
+THEME=/usr/share/grub/themes/delonix/theme.txt
+
+[[ -f $CONF && -f $THEME ]] || exit 0
+
+set_key() {
+    local key=$1 value=$2
+    if grep -q "^${key}=" "$CONF"; then
+        # Não mexemos se o utilizador escolheu outra coisa de propósito —
+        # só corrigimos se estiver vazio ou a apontar para nós.
+        local current
+        current=$(sed -n "s|^${key}=||p" "$CONF" | head -1)
+        [[ $current == "$value" ]] && return 0
+        [[ $current == *delonix* || -z ${current//\"/} ]] || return 0
+        sed -i "s|^${key}=.*|${key}=${value}|" "$CONF"
+    else
+        printf '%s=%s\n' "$key" "$value" >>"$CONF"
+    fi
+    echo "  grub: $key actualizado"
+}
+
+set_key GRUB_THEME "\"$THEME\""
+set_key GRUB_DISTRIBUTOR "\"DelonixOS\""
+
+if [[ -f /boot/grub/grub.cfg ]] && command -v grub-mkconfig >/dev/null; then
+    grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+fi

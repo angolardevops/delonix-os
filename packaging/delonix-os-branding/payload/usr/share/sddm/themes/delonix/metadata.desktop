@@ -1,0 +1,15 @@
+[SddmGreeterTheme]
+Name=Delonix
+Description=Ecrã de login do DelonixOS — DevOps, SRE e Platform Engineering
+Author=Delonix / N'GolaCloud
+Copyright=(c) 2026 Delonix
+License=GPLv3
+Type=sddm-theme
+Version=1.0
+Website=https://ngolacloud.com
+Screenshot=preview.png
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Email=
+QtVersion=6

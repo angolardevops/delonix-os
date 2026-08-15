@@ -1,0 +1,40 @@
+# Maintainer: Delonix / N'GolaCloud <eng@ngolacloud.com>
+#
+# Identidade visual do DelonixOS. Existe como PACOTE, e não como ficheiros
+# copiados para dentro da imagem, por um motivo prático: só assim o tema chega
+# a quem já instalou. Um overlay é escrito uma vez e nunca mais muda.
+#
+# O conteúdo é gerado por branding/gen-assets.py — este PKGBUILD só o embrulha.
+
+pkgname=delonix-os-branding
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="DelonixOS — tema global, splash animado de arranque, GRUB, SDDM e wallpapers"
+arch=('any')
+url="https://ngolacloud.com"
+license=('GPL-3.0-or-later')
+depends=('plymouth' 'breeze-icons' 'ttf-jetbrains-mono-nerd')
+optdepends=('grub: tema do menu de arranque'
+            'sddm: tema do ecrã de login')
+source=("delonix-os-$pkgver.tar.gz")
+sha256sums=('SKIP')
+install=delonix-os-branding.install
+
+package() {
+    # /usr/share/{plymouth,sddm,plasma,wallpapers,grub,color-schemes,delonix}
+    cp -a "$srcdir/branding/." "$pkgdir/"
+
+    # --- ganchos do pacman ----------------------------------------------------
+    # O tema do Plymouth e o do GRUB vivem em ficheiros que pertencem a OUTROS
+    # pacotes (/etc/plymouth/plymouthd.conf, /etc/default/grub). Em vez de
+    # disputar a posse desses ficheiros — o pacman recusaria — reaplicamos a
+    # escolha sempre que um deles for actualizado.
+    install -Dm644 "$srcdir/branding-hooks/95-delonix-plymouth.hook" \
+        "$pkgdir/usr/share/libalpm/hooks/95-delonix-plymouth.hook"
+    install -Dm644 "$srcdir/branding-hooks/96-delonix-grub.hook" \
+        "$pkgdir/usr/share/libalpm/hooks/96-delonix-grub.hook"
+    install -Dm755 "$srcdir/branding-hooks/apply-plymouth" \
+        "$pkgdir/usr/lib/delonix/apply-plymouth"
+    install -Dm755 "$srcdir/branding-hooks/apply-grub" \
+        "$pkgdir/usr/lib/delonix/apply-grub"
+}

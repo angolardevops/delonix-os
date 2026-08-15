@@ -1,0 +1,22 @@
+# saída de build
+/out/
+/.cache/
+/build/
+
+# assets gerados por branding/gen-assets.py para build/ (ignorado acima) e
+# embrulhados no pacote delonix-os-branding — a fonte é o script, não o PNG
+
+# artefactos de empacotamento
+packaging/*/*.tar.gz
+packaging/*/*.pkg.tar.*
+packaging/*/src/
+packaging/*/pkg/
+
+# binários da casa injectados no overlay pelo fetch-delonix-bins.sh
+iso-profiles/delonix/devops/desktop-overlay/usr/local/bin/delonix
+iso-profiles/delonix/devops/desktop-overlay/usr/local/bin/delonixctl
+
+*.iso
+*.iso.sig
+*.log
+__pycache__/

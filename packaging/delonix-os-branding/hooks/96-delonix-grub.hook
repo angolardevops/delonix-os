@@ -1,0 +1,13 @@
+# O /etc/default/grub pertence ao pacote `grub`. Não o disputamos: garantimos
+# só que as nossas linhas lá estão, depois de o grub ser actualizado.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = delonix-os-branding
+Target = grub
+
+[Action]
+Description = A garantir o tema Delonix no GRUB...
+When = PostTransaction
+Exec = /usr/lib/delonix/apply-grub

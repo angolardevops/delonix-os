@@ -1,0 +1,23 @@
+# DelonixOS — configuração do GRUB.
+# Depois de editar: sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+GRUB_DEFAULT=saved
+GRUB_TIMEOUT=5
+GRUB_TIMEOUT_STYLE=menu
+GRUB_DISTRIBUTOR="DelonixOS"
+
+# `quiet splash` é o que dá o Plymouth limpo. Para diagnosticar um arranque
+# partido, tira `quiet splash` na linha de edição do GRUB (tecla `e`).
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash udev.log_priority=3 nowatchdog"
+# systemd.unified_cgroup_hierarchy: cgroup v2 puro — obrigatório para o
+# rootless com limites (ver delonix-doctor).
+GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1"
+
+GRUB_PRELOAD_MODULES="part_gpt part_msdos"
+GRUB_TERMINAL_INPUT=console
+GRUB_GFXMODE=auto
+GRUB_GFXPAYLOAD_LINUX=keep
+GRUB_THEME="/usr/share/grub/themes/delonix/theme.txt"
+GRUB_DISABLE_RECOVERY=false
+GRUB_DISABLE_OS_PROBER=false
+GRUB_SAVEDEFAULT=true

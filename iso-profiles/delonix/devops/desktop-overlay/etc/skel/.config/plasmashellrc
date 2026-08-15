@@ -1,0 +1,13 @@
+# DelonixOS — Plasma Shell enxuto.
+[PlasmaViews][Panel 2][Defaults]
+thickness=44
+
+[Updates]
+performed=true
+
+[Units]
+# Duração base das animações do Plasma, em ms. 0 = sem animação.
+longDuration=0
+shortDuration=0
+veryLongDuration=0
+veryShortDuration=0

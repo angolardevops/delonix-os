@@ -1,0 +1,36 @@
+# Maintainer: Delonix / N'GolaCloud <eng@ngolacloud.com>
+#
+# Meta-pacote. Serve para duas coisas:
+#   1. `pacman -S delonix-os` põe a distro inteira numa Manjaro existente;
+#   2. dá um sítio único para acrescentar peças novas no futuro — quem já
+#      instalou recebe-as no `pacman -Syu` sem ter de saber o nome delas.
+#
+# É esta indirecção que resolve o problema do overlay: a imagem instala o
+# meta-pacote, e a partir daí as actualizações são responsabilidade do pacman.
+
+pkgname=delonix-os
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="DelonixOS — meta-pacote da edição DevOps · SRE · Platform Engineering"
+arch=('any')
+url="https://ngolacloud.com"
+license=('GPL-3.0-or-later')
+depends=("delonix-os-branding>=$pkgver"
+         "delonix-os-settings>=$pkgver"
+         "delonix-os-tools>=$pkgver")
+source=()
+sha256sums=()
+
+package() {
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/doc/delonix-os/README" <<EOF
+DelonixOS $pkgver — DevOps · SRE · Platform Engineering
+
+Este meta-pacote agrega:
+  delonix-os-branding   identidade visual (splash animado, GRUB, SDDM, tema)
+  delonix-os-settings   afinação de kernel, cgroups, KVM, arranque
+  delonix-os-tools      delonix-doctor, delonix-toolbox
+
+Diagnóstico:      delonix-doctor
+Perfis opcionais: delonix-toolbox list
+EOF
+}

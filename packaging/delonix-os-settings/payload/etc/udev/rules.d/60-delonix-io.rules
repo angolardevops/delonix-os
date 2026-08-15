@@ -1,0 +1,23 @@
+# DelonixOS — escalonador de I/O por tipo de disco.
+#
+# O default do kernel (mq-deadline para tudo) desperdiça NVMe e castiga discos
+# rotativos. Cada linha aqui vale latência real em builds, `pacman -Syu` e
+# arranque de VMs — e o utilizador não tem de saber que isto existe.
+
+# NVMe: o próprio dispositivo já reordena melhor do que o kernel. Sem
+# escalonador é mais rápido e gasta menos CPU.
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/nr_requests}="1024"
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/read_ahead_kb}="256"
+
+# SSD SATA/USB (rotational=0): mq-deadline chega e evita a sobrecarga do bfq.
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="0", ATTR{queue/read_ahead_kb}="256"
+
+# Disco rotativo: bfq mantém o desktop utilizável enquanto se copia uma imagem
+# de VM de 40 GB — é exactamente o cenário desta distro.
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"
+ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", ATTR{queue/read_ahead_kb}="2048"
+
+# Não mexer em zram: tem escalonador próprio (none) e é RAM.
+ACTION=="add|change", KERNEL=="zram[0-9]*", ATTR{queue/scheduler}=="none"

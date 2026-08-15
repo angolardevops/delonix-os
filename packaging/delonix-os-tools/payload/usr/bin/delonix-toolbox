@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# DelonixOS — instalador de perfis opcionais.
+#
+# A ISO já traz tudo o que é preciso para trabalhar: k8s, IaC, containers
+# rootless, KVM/libvirt, AWS/GCP, Rust/Go/Python/Node, PostgreSQL/Redis/Mongo,
+# browsers e Claude Code. O que fica aqui são os casos específicos — Java, GPU
+# de fabricante, extras de cloud — e os interruptores do sistema.
+#
+#   delonix-toolbox list
+#   delonix-toolbox install k8s-extra lang-java
+#   delonix-toolbox remove lang-java
+#   delonix-toolbox db start postgres redis mongo   (vêm instaladas mas paradas)
+#   delonix-toolbox eyecandy on|off                 (animações do desktop)
+#   delonix-toolbox unprivileged-ports on|off
+set -euo pipefail
+
+RED=$'\e[31m'; GRN=$'\e[32m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
+
+# --- catálogo: perfil -> descrição | pacotes ---------------------------------
+declare -A DESC=(
+    [lang-rust-multi]="rustup: várias toolchains de Rust por projecto"
+    [lang-node-extra]="yarn + deno + bun"
+    [lang-java]="OpenJDK 21 + Maven + Gradle"
+    [lang-python-data]="Python científico e de dados"
+    [cloud-azure]="Azure CLI (AWS e GCP já vêm na ISO)"
+    [k8s-extra]="flux, kubeseal, velero, popeye, kubent"
+    [observability]="Grafana Alloy, promtool, k6, vector"
+    [ide-extra]="VS Code, DBeaver, Postman (o IDE da casa é o antigravity)"
+    [virt-extra]="firecracker, vagrant, kubevirt CLI"
+    [gpu-amd]="ROCm/OpenCL para GPU AMD (~2 GB)"
+    [gpu-nvidia]="CUDA + OpenCL para GPU NVIDIA (~3 GB)"
+    [printing]="CUPS + drivers (fora da ISO por peso)"
+    [office]="LibreOffice + Thunderbird (para quem precisa mesmo)"
+    [delonix]="Delonix Runtime + delonixctl (motor da casa)"
+    [ai]="Claude Code + Antigravity (reinstalar/actualizar)"
+    [ai-local]="Ollama: modelos locais na GPU/NPU já activadas"
+)
+
+declare -A PKGS=(
+    [lang-rust-multi]="rustup"
+    [lang-node-extra]="yarn deno bun"
+    [lang-java]="jdk21-openjdk maven gradle"
+    [lang-python-data]="python-numpy python-pandas python-matplotlib ipython"
+    [cloud-azure]="azure-cli"
+    [k8s-extra]="flux-bin kubeseal velero popeye kubent"
+    [observability]="k6 vector prometheus"
+    [ide-extra]="visual-studio-code-bin dbeaver postman-bin"
+    [virt-extra]="firecracker vagrant virtctl-bin"
+    [gpu-amd]="rocm-opencl-runtime rocminfo"
+    [gpu-nvidia]="cuda opencl-nvidia"
+    [printing]="manjaro-printer cups cups-pdf system-config-printer print-manager"
+    [office]="libreoffice-still thunderbird hunspell-en_us"
+    [delonix]="__delonix__"
+    [ai]="claude-code antigravity"
+    [ai-local]="ollama"
+)
+
+# --- helpers -----------------------------------------------------------------
+die()  { printf '%s✗%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
+info() { printf '%s→%s %s\n' "$BLD" "$RST" "$*"; }
+done_() { printf '%s✓%s %s\n' "$GRN" "$RST" "$*"; }
+
+helper() {
+    if command -v yay >/dev/null; then echo yay
+    elif command -v pamac >/dev/null; then echo "pamac"
+    else echo pacman; fi
+}
+
+install_delonix() {
+    # O motor da casa não está nos repos da Manjaro: vem dos artefactos
+    # publicados do delonix-runtime.
+    info "a instalar Delonix Runtime + delonixctl a partir dos releases"
+    local tmp; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
+    local base="https://github.com/angolardevops/delonix-runtime/releases/latest/download"
+    for bin in delonix delonixctl; do
+        if curl -fsSL "$base/${bin}-x86_64-unknown-linux-gnu" -o "$tmp/$bin"; then
+            sudo install -Dm755 "$tmp/$bin" "/usr/local/bin/$bin"
+            done_ "$bin instalado"
+        else
+            printf '%s!%s não consegui descarregar %s\n' "$RED" "$RST" "$bin"
+        fi
+    done
+}
+
+cmd_list() {
+    printf '%sPerfis disponíveis%s\n\n' "$BLD" "$RST"
+    for k in $(printf '%s\n' "${!DESC[@]}" | sort); do
+        local mark=" "
+        [[ ${PKGS[$k]} != "__delonix__" ]] &&
+            pacman -Qq ${PKGS[$k]%% *} &>/dev/null && mark="✓"
+        printf '  %s %-16s %s%s%s\n' "$mark" "$k" "$DIM" "${DESC[$k]}" "$RST"
+    done
+    printf '\n%s(✓ = pelo menos o pacote principal já está instalado)%s\n' "$DIM" "$RST"
+}
+
+cmd_install() {
+    (( $# )) || die "diz-me que perfis: $(printf '%s ' "${!DESC[@]}")"
+    local h; h=$(helper)
+    for profile in "$@"; do
+        [[ -v PKGS[$profile] ]] || die "perfil desconhecido: $profile"
+        if [[ ${PKGS[$profile]} == "__delonix__" ]]; then install_delonix; continue; fi
+        info "$profile — ${DESC[$profile]}"
+        case $h in
+            yay)    yay -S --needed --noconfirm ${PKGS[$profile]} ;;
+            pamac)  pamac install --no-confirm ${PKGS[$profile]} ;;
+            pacman) sudo pacman -S --needed --noconfirm ${PKGS[$profile]} ;;
+        esac
+        done_ "$profile instalado"
+    done
+}
+
+cmd_remove() {
+    (( $# )) || die "diz-me que perfis remover"
+    for profile in "$@"; do
+        [[ -v PKGS[$profile] ]] || die "perfil desconhecido: $profile"
+        [[ ${PKGS[$profile]} == "__delonix__" ]] && {
+            sudo rm -f /usr/local/bin/delonix /usr/local/bin/delonixctl
+            done_ "delonix removido"; continue; }
+        sudo pacman -Rns --noconfirm ${PKGS[$profile]} || true
+        done_ "$profile removido"
+    done
+}
+
+# --- bases de dados locais ----------------------------------------------------
+# Vêm instaladas mas paradas: três servidores a dormir custam ~600 MB de RAM.
+# Isto liga-as quando fazem falta e trata do arranque inicial do Postgres.
+cmd_db() {
+    local action=${1:-status}; shift || true
+    local targets=("$@")
+    (( ${#targets[@]} )) || targets=(postgres redis mongo)
+
+    _unit() {
+        case $1 in
+            postgres|postgresql) echo postgresql ;;
+            redis|valkey)        echo valkey ;;
+            mongo|mongodb)       echo mongodb ;;
+            *) die "base de dados desconhecida: $1 (postgres|redis|mongo)" ;;
+        esac
+    }
+
+    _initdb() {
+        # O Postgres não arranca sem um cluster inicializado — e a mensagem de
+        # erro não diz isso a ninguém que seja a primeira vez.
+        [[ -s /var/lib/postgres/data/PG_VERSION ]] && return 0
+        info "a inicializar o cluster do PostgreSQL (uma única vez)"
+        sudo -u postgres initdb --locale=C.UTF-8 --encoding=UTF8 \
+            -D /var/lib/postgres/data
+    }
+
+    for db in "${targets[@]}"; do
+        local unit; unit=$(_unit "$db")
+        case $action in
+            start|on)
+                [[ $unit == postgresql ]] && _initdb
+                sudo systemctl start "$unit" && done_ "$db a correr"
+                ;;
+            enable)
+                [[ $unit == postgresql ]] && _initdb
+                sudo systemctl enable --now "$unit" && done_ "$db activo e a arrancar com o sistema"
+                ;;
+            stop|off)
+                sudo systemctl stop "$unit" && done_ "$db parado"
+                ;;
+            disable)
+                sudo systemctl disable --now "$unit" && done_ "$db desactivado"
+                ;;
+            status)
+                printf '  %-10s %s\n' "$db" "$(systemctl is-active "$unit" 2>/dev/null)"
+                ;;
+            *) die "usa: delonix-toolbox db start|stop|enable|disable|status [postgres redis mongo]" ;;
+        esac
+    done
+}
+
+# --- animações do desktop -----------------------------------------------------
+cmd_eyecandy() {
+    local state=${1:-}
+    local kwin="$HOME/.config/kwinrc" kg="$HOME/.config/kdeglobals"
+    case $state in
+        on)
+            kwriteconfig6 --file "$kg"   --group KDE --key AnimationDurationFactor 1
+            kwriteconfig6 --file "$kwin" --group Compositing --key AnimationSpeed 3
+            for fx in blur contrast slidingpopups fade scale glide translucency; do
+                kwriteconfig6 --file "$kwin" --group Plugins --key "${fx}Enabled" true
+            done
+            done_ "animações e efeitos ligados"
+            ;;
+        off)
+            kwriteconfig6 --file "$kg"   --group KDE --key AnimationDurationFactor 0
+            kwriteconfig6 --file "$kwin" --group Compositing --key AnimationSpeed 0
+            for fx in blur contrast slidingpopups fade scale glide translucency \
+                      magiclamp squash wobblywindows fallapart sheet; do
+                kwriteconfig6 --file "$kwin" --group Plugins --key "${fx}Enabled" false
+            done
+            done_ "animações e efeitos desligados (o default do DelonixOS)"
+            ;;
+        *) die "usa: delonix-toolbox eyecandy on|off" ;;
+    esac
+    qdbus6 org.kde.KWin /KWin reconfigure 2>/dev/null ||
+        printf '%s  (reinicia a sessão para aplicar)%s\n' "$DIM" "$RST"
+}
+
+cmd_unprivileged_ports() {
+    local state=${1:-}
+    case $state in
+        on)
+            echo 'net.ipv4.ip_unprivileged_port_start = 80' |
+                sudo tee /etc/sysctl.d/98-delonix-lowports.conf >/dev/null
+            sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+            done_ "processos sem root podem agora ligar-se a partir da porta 80"
+            printf '%s  (compromisso de segurança consciente — ver /etc/sysctl.d/99-delonix.conf)%s\n' "$DIM" "$RST"
+            ;;
+        off)
+            sudo rm -f /etc/sysctl.d/98-delonix-lowports.conf
+            sudo sysctl -w net.ipv4.ip_unprivileged_port_start=1024
+            done_ "reposto o valor seguro (1024)"
+            ;;
+        *) die "usa: delonix-toolbox unprivileged-ports on|off" ;;
+    esac
+}
+
+case ${1:-help} in
+    list)                shift; cmd_list "$@" ;;
+    install|add)         shift; cmd_install "$@" ;;
+    remove|rm)           shift; cmd_remove "$@" ;;
+    db)                  shift; cmd_db "$@" ;;
+    eyecandy)            shift; cmd_eyecandy "$@" ;;
+    unprivileged-ports)  shift; cmd_unprivileged_ports "$@" ;;
+    help|--help|-h)
+        sed -n '2,12p' "$0" | sed 's/^# \?//'
+        printf '\n'; cmd_list ;;
+    *) die "comando desconhecido: $1 (tenta: delonix-toolbox help)" ;;
+esac

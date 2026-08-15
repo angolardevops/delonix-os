@@ -1,0 +1,80 @@
+# DelonixOS — prompt.
+# Mostra o que faz falta a quem opera infra: onde estou, em que contexto k8s,
+# em que conta cloud, em que branch, e se o último comando falhou.
+
+format = """
+$hostname\
+$directory\
+$git_branch$git_status\
+$kubernetes\
+$aws$gcloud$azure\
+$terraform\
+$container\
+$cmd_duration\
+$line_break\
+$character"""
+
+add_newline = true
+
+[character]
+success_symbol = "[❯](bold #e0202f)"
+error_symbol = "[❯](bold #e84a4a)"
+vimcmd_symbol = "[❮](bold #e0202f)"
+
+[directory]
+style = "bold #e6e8ec"
+truncation_length = 4
+truncate_to_repo = true
+read_only = " "
+
+[git_branch]
+symbol = " "
+style = "#8b9099"
+format = "[$symbol$branch]($style) "
+
+[git_status]
+style = "#e0a43c"
+format = "([$all_status$ahead_behind]($style)) "
+
+[kubernetes]
+disabled = false
+symbol = "☸ "
+format = '[$symbol$context( \($namespace\))]($style) '
+style = "bold #e0202f"
+# Avisa a vermelho carregado quando o contexto cheira a produção.
+[[kubernetes.contexts]]
+context_pattern = ".*(prod|prd|production).*"
+style = "bold white bg:#8a0f18"
+symbol = "☸ PROD "
+
+[aws]
+symbol = "  "
+format = '[$symbol$profile(\($region\))]($style) '
+style = "#e0a43c"
+
+[gcloud]
+disabled = false
+format = '[$symbol$project]($style) '
+style = "#4a90d9"
+
+[azure]
+disabled = true
+
+[terraform]
+symbol = "󱁢 "
+format = '[$symbol$workspace]($style) '
+style = "#8a5cf6"
+
+[container]
+format = '[$symbol\[$name\]]($style) '
+style = "#8b9099"
+
+[cmd_duration]
+min_time = 2000
+format = "[ $duration]($style) "
+style = "#8b9099"
+
+[hostname]
+ssh_only = true
+format = "[$hostname]($style) "
+style = "bold #e0202f"

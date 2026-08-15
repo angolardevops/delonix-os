@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Garante que o tema do Plymouth é o `delonix`.
+#
+# Só age quando é preciso: reconstruir o initramfs demora, e isto corre em
+# cada actualização do plymouth.
+set -euo pipefail
+
+THEME=delonix
+[[ -d /usr/share/plymouth/themes/$THEME ]] || exit 0
+command -v plymouth-set-default-theme >/dev/null || exit 0
+
+actual=$(plymouth-set-default-theme 2>/dev/null || echo "")
+if [[ $actual == "$THEME" ]]; then
+    # O tema está escolhido — falta saber se o initramfs o levou lá dentro.
+    # Uma imagem chega para a resposta (na Manjaro chamam-se
+    # initramfs-<versão>-x86_64.img, não initramfs-linux.img).
+    img=$(ls -t /boot/initramfs-*.img 2>/dev/null | grep -v fallback | head -1)
+    if [[ -n $img ]] && command -v lsinitcpio >/dev/null &&
+       lsinitcpio "$img" 2>/dev/null | grep -q "themes/$THEME"; then
+        exit 0
+    fi
+    # Sem lsinitcpio (ou sem imagem) não dá para confirmar: mais vale
+    # reconstruir uma vez a mais do que arrancar sem splash.
+fi
+
+echo "  a aplicar o splash $THEME (e a reconstruir o initramfs)"
+plymouth-set-default-theme -R "$THEME"

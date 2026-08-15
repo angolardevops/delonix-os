@@ -1,0 +1,11 @@
+# DelonixOS — KRunner só com o que é útil e barato.
+[General]
+FreeFloating=true
+historyBehavior=EnableSuggestions
+
+[Plugins]
+baloosearchEnabled=false      # a indexação está desligada; o plugin só atrasaria
+recentdocumentsEnabled=false
+browserhistoryEnabled=false
+browsertabsEnabled=false
+krunner_appstreamEnabled=false

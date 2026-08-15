@@ -1,0 +1,14 @@
+# Reaplica o splash Delonix depois de qualquer coisa que lhe possa mexer.
+# Sem isto, uma actualização do plymouth pode repor o tema por omissão e o
+# arranque volta a mostrar texto.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = delonix-os-branding
+Target = plymouth
+
+[Action]
+Description = A garantir o splash Delonix...
+When = PostTransaction
+Exec = /usr/lib/delonix/apply-plymouth

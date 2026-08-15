@@ -1,0 +1,174 @@
+### DelonixOS boot splash #####################################################
+#
+# Tema Plymouth (plugin `script`), pensado para arranque UEFI com KMS cedo.
+#
+#   - fundo escuro (#0d0f12) com vinheta                     z = 0
+#   - marca Delonix ANIMADA: o globo fica quieto e os anéis
+#     de sinal propagam-se para fora, em ciclo                z = 10
+#   - "DelonixOS" + subtítulo                                 z = 10
+#   - barra de progresso fina, vermelho Delonix               z = 20
+#   - diálogo de password (LUKS) com bullets                  z = 100
+#
+# A animação são frames pré-renderizados (anim-NN.png, gerados pelo
+# branding/gen-assets.py). Trocar sprites é barato; desenhar não é — e isto
+# corre antes de haver GPU acelerada.
+##############################################################################
+
+## --- geometria --------------------------------------------------------------
+screen_width  = Window.GetWidth();
+screen_height = Window.GetHeight();
+screen_x      = Window.GetX();
+screen_y      = Window.GetY();
+
+## --- fundo ------------------------------------------------------------------
+bg_sprite = Sprite(Image("background.png").Scale(screen_width, screen_height));
+bg_sprite.SetX(screen_x);
+bg_sprite.SetY(screen_y);
+bg_sprite.SetZ(0);
+
+## --- frames da marca --------------------------------------------------------
+# São SEMPRE 24 (o branding/gen-assets.py garante-o, e o verify-profile.sh
+# confirma). Descobrir o número em run-time não dá: chamar Image() sobre um
+# ficheiro inexistente aborta o script e o arranque fica sem splash nenhum.
+frame_count = 24;
+frames      = [];
+for (i = 0; i < frame_count; i++) {
+    if (i < 10)
+        name = "anim-0" + i + ".png";
+    else
+        name = "anim-" + i + ".png";
+    frames[i] = Image(name);
+}
+
+logo_width  = frames[0].GetWidth();
+logo_height = frames[0].GetHeight();
+logo_x = screen_x + screen_width  / 2 - logo_width  / 2;
+logo_y = screen_y + screen_height / 2 - logo_height / 2 - 60;
+
+logo_sprite = Sprite(frames[0]);
+logo_sprite.SetX(logo_x);
+logo_sprite.SetY(logo_y);
+logo_sprite.SetZ(10);
+
+## --- wordmark ---------------------------------------------------------------
+word_image  = Image("wordmark.png");
+word_sprite = Sprite(word_image);
+word_sprite.SetX(screen_x + screen_width / 2 - word_image.GetWidth() / 2);
+word_sprite.SetY(logo_y + logo_height + 24);
+word_sprite.SetZ(10);
+
+## --- barra de progresso -----------------------------------------------------
+bar_width  = screen_width / 4;
+bar_height = 3;
+bar_x      = screen_x + screen_width / 2 - bar_width / 2;
+bar_y      = screen_y + screen_height * 3 / 4;
+
+track_sprite = Sprite(Image("bar-track.png").Scale(bar_width, bar_height));
+track_sprite.SetX(bar_x);
+track_sprite.SetY(bar_y);
+track_sprite.SetZ(20);
+
+fill_image  = Image("bar-fill.png");
+fill_sprite = Sprite();
+fill_sprite.SetX(bar_x);
+fill_sprite.SetY(bar_y);
+fill_sprite.SetZ(21);
+
+fun set_progress (progress) {
+    width = bar_width * progress;
+    if (width < 1) width = 1;
+    fill_sprite.SetImage(fill_image.Scale(width, bar_height));
+}
+set_progress(0);
+
+## --- ciclo da animação ------------------------------------------------------
+# O refresh do Plymouth corre a ~50 Hz; avançamos um frame a cada 2 refreshes
+# (~25 fps), o suficiente para o sinal parecer fluido sem custar CPU.
+tick  = 0;
+index = 0;
+
+fun refresh_callback () {
+    tick++;
+    if (tick % 2 == 0) {
+        index = (index + 1) % frame_count;
+        logo_sprite.SetImage(frames[index]);
+    }
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+fun boot_progress_callback (duration, progress) {
+    set_progress(progress);
+}
+Plymouth.SetBootProgressFunction(boot_progress_callback);
+
+## --- mensagens --------------------------------------------------------------
+message_sprite = Sprite();
+message_sprite.SetZ(30);
+
+fun show_message (text) {
+    image = Image.Text(text, 0.72, 0.74, 0.78);
+    message_sprite.SetImage(image);
+    message_sprite.SetX(screen_x + screen_width / 2 - image.GetWidth() / 2);
+    message_sprite.SetY(bar_y + 26);
+    message_sprite.SetOpacity(1);
+}
+
+fun hide_message () {
+    message_sprite.SetOpacity(0);
+}
+
+Plymouth.SetMessageFunction(fun (text) { show_message(text); });
+# NOTA: SetDisplayNormalFunction é registada mais abaixo (display_normal_callback),
+# depois de os bullets existirem — registá-la aqui seria sobreposta na mesma.
+
+## --- diálogo de password (discos cifrados) ----------------------------------
+prompt_sprite = Sprite();
+prompt_sprite.SetZ(100);
+bullet_image  = Image("bullet.png");
+bullets       = [];
+
+fun clear_bullets () {
+    for (i = 0; bullets[i]; i++) bullets[i].SetOpacity(0);
+    bullets = [];
+}
+
+fun display_password_callback (prompt, bullet_count) {
+    hide_message();
+    clear_bullets();
+
+    if (prompt == "") prompt = "Palavra-passe do disco";
+    text = Image.Text(prompt, 0.88, 0.89, 0.91);
+    prompt_sprite.SetImage(text);
+    prompt_x = screen_x + screen_width / 2 - text.GetWidth() / 2;
+    prompt_y = bar_y + 40;
+    prompt_sprite.SetX(prompt_x);
+    prompt_sprite.SetY(prompt_y);
+    prompt_sprite.SetOpacity(1);
+
+    spacing   = bullet_image.GetWidth() + 6;
+    bullets_x = screen_x + screen_width / 2 - (bullet_count * spacing) / 2;
+    for (i = 0; i < bullet_count; i++) {
+        b = Sprite(bullet_image);
+        b.SetX(bullets_x + i * spacing);
+        b.SetY(prompt_y + text.GetHeight() + 14);
+        b.SetZ(100);
+        bullets[i] = b;
+    }
+}
+
+fun display_normal_callback () {
+    clear_bullets();
+    prompt_sprite.SetOpacity(0);
+    hide_message();
+}
+
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+## --- saída ------------------------------------------------------------------
+fun quit_callback () {
+    logo_sprite.SetImage(frames[0]);
+    logo_sprite.SetOpacity(1);
+    set_progress(1);
+}
+Plymouth.SetQuitFunction(quit_callback);

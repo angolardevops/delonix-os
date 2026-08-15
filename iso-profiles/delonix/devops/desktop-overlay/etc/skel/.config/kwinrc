@@ -1,0 +1,59 @@
+# DelonixOS — KWin sem animações.
+#
+# Não é preferência estética: cada efeito é GPU, memória e latência. Numa
+# workstation com VMs a correr, o `blur` sozinho custa dezenas de MB de VRAM e
+# aparece em cada janela redesenhada.
+#
+# Reversível num comando:  delonix-toolbox eyecandy on
+
+[Compositing]
+# A composição FICA ligada — no Wayland não é opcional, e desligá-la no X11 dá
+# tearing. O que sai são os efeitos por cima dela.
+Enabled=true
+AnimationSpeed=0
+LatencyPolicy=Low
+WindowsBlockCompositing=true
+AllowTearing=false
+
+[Plugins]
+blurEnabled=false
+contrastEnabled=false
+slidingpopupsEnabled=false
+fadeEnabled=false
+scaleEnabled=false
+glideEnabled=false
+magiclampEnabled=false
+squashEnabled=false
+translucencyEnabled=false
+wobblywindowsEnabled=false
+fallapartEnabled=false
+sheetEnabled=false
+dimscreenEnabled=false
+zoomEnabled=false
+mouseclickEnabled=false
+screenedgeEnabled=false
+# Ficam os que têm função, não decoração:
+overviewEnabled=true
+highlightwindowEnabled=true
+screenshotEnabled=true
+colorpickerEnabled=true
+
+[Desktops]
+Number=4
+Rows=1
+
+[Windows]
+FocusPolicy=ClickToFocus
+Placement=Centered
+
+[org.kde.kdecoration2]
+ButtonsOnLeft=M
+ButtonsOnRight=IAX
+library=org.kde.breeze
+theme=Breeze
+
+[TabBox]
+LayoutName=thumbnail_grid
+
+[Xwayland]
+Scale=1

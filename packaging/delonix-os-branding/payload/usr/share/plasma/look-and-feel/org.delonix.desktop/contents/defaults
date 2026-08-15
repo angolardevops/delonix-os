@@ -1,0 +1,51 @@
+[kdeglobals][General]
+ColorScheme=DelonixDark
+AccentColor=224,32,47
+Name=Delonix Dark
+font=Noto Sans,10,-1,5,50,0,0,0,0,0
+fixed=JetBrainsMono Nerd Font,10,-1,5,50,0,0,0,0,0
+smallestReadableFont=Noto Sans,8,-1,5,50,0,0,0,0,0
+toolBarFont=Noto Sans,10,-1,5,50,0,0,0,0,0
+menuFont=Noto Sans,10,-1,5,50,0,0,0,0,0
+
+[kdeglobals][KDE]
+widgetStyle=Breeze
+SingleClick=false
+AnimationDurationFactor=0.5
+
+[kdeglobals][Icons]
+Theme=breeze-dark
+
+[plasmarc][Theme]
+name=breeze-dark
+
+[kwinrc][org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+ButtonsOnLeft=M
+ButtonsOnRight=IAX
+
+[kwinrc][Windows]
+FocusPolicy=ClickToFocus
+Placement=Centered
+
+[kwinrc][Desktops]
+Number=4
+Rows=1
+
+[kwinrc][Compositing]
+AnimationSpeed=2
+LatencyPolicy=Low
+
+[ksplashrc][KSplash]
+Engine=KSplashQML
+Theme=org.delonix.desktop
+
+[kscreenlockerrc][Greeter][Wallpaper][org.kde.image][General]
+Image=Delonix
+
+[Wallpaper]
+Image=Delonix
+
+[plasma-org.kde.plasma.desktop-appletsrc][Containments][1][Wallpaper][org.kde.image][General]
+Image=Delonix

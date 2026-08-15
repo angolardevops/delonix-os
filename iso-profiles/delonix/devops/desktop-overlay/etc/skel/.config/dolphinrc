@@ -1,0 +1,11 @@
+[General]
+ShowFullPath=true
+GlobalViewProps=false
+RememberOpenedTabs=false
+ShowSpaceInfo=true
+
+[DetailsMode]
+PreviewsShown=false
+
+[MainWindow]
+MenuBar=Disabled

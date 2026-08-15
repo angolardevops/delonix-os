@@ -1,0 +1,158 @@
+# DelonixOS — pacotes do sistema base (rootfs, comum a live e instalado).
+#
+# Regra: aqui só entra o que é preciso para ARRANCAR, ligar à rede, actualizar
+# e reparar a máquina. Ferramentas de trabalho vão em Packages-Desktop.
+#
+# Sintaxe do manjaro-tools:
+#   KERNEL              é substituído pelo kernel escolhido (`buildiso -k`)
+#   >multilib / >extra / >nonfree_x86_64   entradas condicionais
+# Entradas marcadas [manjaro] só existem nos repositórios da Manjaro.
+
+## --- núcleo -------------------------------------------------------------------
+base
+KERNEL
+KERNEL-headers
+mkinitcpio
+mkinitcpio-openswap
+plymouth
+manjaro-system                      # [manjaro]
+manjaro-release                     # [manjaro]
+manjaro-keyring                     # [manjaro]
+mhwd                                # [manjaro]
+mhwd-db                             # [manjaro]
+
+## --- arranque -------------------------------------------------------------------
+grub
+install-grub                        # [manjaro]
+update-grub                         # [manjaro]
+efibootmgr
+os-prober
+sbctl
+memtest86+
+memtest86+-efi
+
+## --- firmware / hardware --------------------------------------------------------
+linux-firmware
+sof-firmware
+amd-ucode
+intel-ucode
+b43-fwcutter
+wireless-regdb
+usbutils
+udev-usb-sync                       # [manjaro]
+pciutils
+dmidecode
+lm_sensors
+smartmontools
+nvme-cli
+hdparm
+acpi
+acpid
+cpupower
+powertop
+
+## --- sistemas de ficheiros --------------------------------------------------------
+btrfs-progs
+dosfstools
+e2fsprogs
+exfatprogs
+f2fs-tools
+xfsprogs
+jfsutils
+nfs-utils
+cifs-utils
+ntfs-3g
+cryptsetup
+device-mapper
+dmraid
+ecryptfs-utils
+lvm2
+mdadm
+gptfdisk
+parted
+
+## --- rede base ---------------------------------------------------------------------
+networkmanager
+networkmanager-openvpn
+networkmanager-openconnect
+modemmanager
+mobile-broadband-provider-info
+usb_modeswitch
+wpa_supplicant
+iwd
+dhclient
+dnsmasq
+nftables
+iproute2
+iputils
+ethtool
+bind                                # dig, host
+inetutils
+openssh
+wireguard-tools
+avahi
+nss-mdns
+
+## --- áudio (pipewire, sem stack pesada) ----------------------------------------------
+pipewire
+pipewire-alsa
+pipewire-pulse
+pipewire-jack
+wireplumber
+alsa-utils
+alsa-firmware
+
+## --- bluetooth --------------------------------------------------------------------
+bluez
+bluez-utils
+
+## --- energia / térmica ---------------------------------------------------------------
+# NOTA: nem `tlp` nem `power-profiles-daemon`. O gestor de energia desta distro
+# é o `tuned` (ver Packages-Desktop): o tlp DECLARA conflito com ele, e ter três
+# daemons a disputar o mesmo governador de CPU é pior do que não ter nenhum.
+thermald
+earlyoom
+zram-generator
+
+## --- segurança -----------------------------------------------------------------------
+apparmor
+audit
+polkit
+sudo
+gnupg
+ca-certificates
+ca-certificates-mozilla
+
+## --- utilitários de consola indispensáveis --------------------------------------------
+bash-completion
+glibc-locales
+nano
+nano-syntax-highlighting
+micro
+vi
+less
+which
+man-db
+man-pages
+texinfo
+perl
+diffutils
+tar
+unzip
+zip
+7zip
+rsync
+wget
+curl
+git
+tree
+lsof
+strace
+ltrace
+psmisc
+procps-ng
+sysfsutils
+util-linux
+cronie
+logrotate
+haveged

@@ -1,0 +1,20 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Delonix / N'GolaCloud",
+                "Email": "eng@ngolacloud.com"
+            }
+        ],
+        "Category": "",
+        "Description": "Tema global do DelonixOS — escuro, acento vermelho Delonix, densidade alta para trabalho em terminal",
+        "Id": "org.delonix.desktop",
+        "License": "GPL-3.0-or-later",
+        "Name": "Delonix",
+        "Version": "1.0",
+        "Website": "https://ngolacloud.com"
+    },
+    "X-Plasma-APIVersion": "2",
+    "X-Plasma-MainScript": "defaults"
+}

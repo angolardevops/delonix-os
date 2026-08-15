@@ -1,0 +1,22 @@
+# Pacotes do AUR que a ISO precisa e que NÃO existem nos repositórios.
+#
+# O pacman do `buildiso` só instala de repositórios — não sabe o que é o AUR.
+# Por isso o build compila estes localmente (scripts/build-aur-repo.sh) para um
+# repositório `[delonix-aur]` que é acrescentado ao pacman do chroot.
+#
+# Ordem = ordem de compilação (dependências primeiro).
+# Formato: <nome-no-aur>   # comentário
+
+yay                                      # acesso ao AUR no sistema instalado
+octopi                                   # frontend Qt do pacman
+grpcurl                                  # curl para gRPC
+cloud-hypervisor                         # VMM leve para microVMs
+google-cloud-cli                         # gcloud (~1 GB descomprimido)
+google-cloud-cli-gke-gcloud-auth-plugin  # auth do GKE para o kubectl
+claude-code                              # Claude Code CLI
+antigravity                              # IDE Antigravity
+google-chrome                            # browser (repackaging do .deb oficial)
+microsoft-edge-stable-bin                # browser (idem)
+mongodb-bin                              # servidor MongoDB (licença SSPL: fora dos repos)
+mongosh-bin                              # shell do MongoDB
+mongodb-tools                            # mongodump/mongorestore/mongoimport

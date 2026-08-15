@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# DelonixOS — preparação de primeiro arranque.
+#
+# Corre UMA vez, depois da instalação (o Calamares cria o utilizador só no fim,
+# por isso isto não pode viver no build da ISO).
+#
+# Faz três coisas, todas indispensáveis para containers rootless:
+#   1. garante intervalos subuid/subgid para cada utilizador humano;
+#   2. activa `linger` (serviços do utilizador sobrevivem ao logout);
+#   3. deixa o /var/lib/delonix pronto para o Delonix Runtime.
+set -euo pipefail
+
+STAMP=/var/lib/delonix/firstboot.done
+SUB_START=100000
+SUB_COUNT=65536
+
+log() { printf '[delonix-firstboot] %s\n' "$*"; }
+
+mkdir -p /var/lib/delonix
+touch /etc/subuid /etc/subgid
+
+# --- 1. subuid / subgid -------------------------------------------------------
+# O useradd do Calamares nem sempre atribui os intervalos. Sem eles, qualquer
+# container rootless falha com "newuidmap: uid range not allowed".
+next_start() {
+    local file=$1 max=$SUB_START
+    while IFS=: read -r _ start count; do
+        [[ -n ${start:-} ]] || continue
+        (( start + count > max )) && max=$(( start + count ))
+    done <"$file"
+    echo "$max"
+}
+
+while IFS=: read -r user _ uid _ _ home shell; do
+    (( uid >= 1000 && uid < 60000 )) || continue
+    [[ $shell == */nologin || $shell == */false ]] && continue
+
+    for file in /etc/subuid /etc/subgid; do
+        if ! grep -q "^${user}:" "$file"; then
+            start=$(next_start "$file")
+            printf '%s:%s:%s\n' "$user" "$start" "$SUB_COUNT" >>"$file"
+            log "atribuído $(basename "$file") $user:$start:$SUB_COUNT"
+        fi
+    done
+
+    # --- 2. linger ------------------------------------------------------------
+    if ! loginctl show-user "$user" -p Linger 2>/dev/null | grep -q 'Linger=yes'; then
+        loginctl enable-linger "$user" 2>/dev/null && log "linger activado para $user" || true
+    fi
+
+    # --- 3. directórios do runtime --------------------------------------------
+    if [[ -d $home ]]; then
+        install -d -o "$user" -g "$user" -m 0755 \
+            "$home/.local/share/delonix" \
+            "$home/.config/delonix" \
+            "$home/.kube" 2>/dev/null || true
+    fi
+done </etc/passwd
+
+# --- 4. libvirt: rede default pronta a usar ------------------------------------
+# Sem isto, a primeira VM criada no virt-manager falha com "network 'default'
+# is not active" — e a pessoa perde meia hora a perceber porquê.
+if command -v virsh >/dev/null; then
+    systemctl start libvirtd.socket 2>/dev/null || true
+    if virsh --connect qemu:///system net-info default &>/dev/null; then
+        virsh --connect qemu:///system net-autostart default 2>/dev/null && log "rede libvirt 'default' em autostart"
+        virsh --connect qemu:///system net-start default 2>/dev/null || true
+    fi
+    install -d -m 0771 -o root -g libvirt /var/lib/libvirt/images 2>/dev/null || true
+fi
+
+# --- 5. perfil de desempenho para labs -----------------------------------------
+if command -v tuned-adm >/dev/null; then
+    systemctl start tuned 2>/dev/null || true
+    tuned-adm profile delonix-lab 2>/dev/null && log "perfil tuned: delonix-lab" || true
+fi
+
+# --- estado do host -----------------------------------------------------------
+log "cgroup: $(stat -fc %T /sys/fs/cgroup 2>/dev/null || echo desconhecido)"
+log "userns máx: $(sysctl -n user.max_user_namespaces 2>/dev/null || echo n/d)"
+log "kvm: $([[ -e /dev/kvm ]] && echo presente || echo ausente)"
+log "nested: $(cat /sys/module/kvm_intel/parameters/nested 2>/dev/null ||
+              cat /sys/module/kvm_amd/parameters/nested 2>/dev/null || echo n/d)"
+
+date -Is >"$STAMP"
+log "concluído."

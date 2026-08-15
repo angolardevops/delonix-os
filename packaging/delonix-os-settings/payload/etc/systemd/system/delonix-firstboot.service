@@ -1,0 +1,15 @@
+[Unit]
+Description=DelonixOS — preparação de primeiro arranque (rootless, subuid/subgid, linger)
+ConditionPathExists=!/var/lib/delonix/firstboot.done
+After=systemd-user-sessions.service
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/delonix/firstboot
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

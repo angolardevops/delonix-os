@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DelonixOS — Bem-vindo
+Comment=Instruções da sessão live
+Exec=kitty --title "DelonixOS live" -e bash -lc 'cat /usr/share/delonix/welcome.txt; exec zsh'
+Icon=utilities-terminal
+Terminal=false
+X-KDE-autostart-phase=2
+OnlyShowIn=KDE;

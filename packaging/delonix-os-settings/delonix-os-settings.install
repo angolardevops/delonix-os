@@ -1,0 +1,35 @@
+_aplicar() {
+    # Aplicar já o que é aplicável sem reiniciar. O resto (módulos, initramfs)
+    # entra no próximo arranque — e é dito em voz alta em vez de se fingir que
+    # ficou tudo feito.
+    systemctl daemon-reload 2>/dev/null || true
+    sysctl --system >/dev/null 2>&1 || true
+    systemctl enable delonix-firstboot.service 2>/dev/null || true
+}
+
+post_install() {
+    _aplicar
+    cat <<'EOF'
+
+  DelonixOS — afinação de sistema instalada.
+
+  Já activo:  sysctl, limites, delegação de cgroups
+  No próximo arranque:  KVM nested, módulos, zram, initramfs
+
+  Verifica o estado com:  delonix-doctor
+
+EOF
+}
+
+post_upgrade() {
+    _aplicar
+    # Se o hook do initramfs mudou, o splash e o arranque dependem disso.
+    if [[ -f /etc/mkinitcpio.conf.d/delonix.conf ]] && command -v mkinitcpio >/dev/null; then
+        echo "  nota: se mexeste no initramfs, corre 'sudo mkinitcpio -P'"
+    fi
+}
+
+post_remove() {
+    systemctl daemon-reload 2>/dev/null || true
+    echo "  afinação removida — os valores do kernel voltam ao default no próximo arranque"
+}

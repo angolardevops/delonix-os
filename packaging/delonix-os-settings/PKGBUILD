@@ -1,0 +1,42 @@
+# Maintainer: Delonix / N'GolaCloud <eng@ngolacloud.com>
+#
+# Afinação de sistema do DelonixOS: o que faz a diferença entre um Manjaro com
+# ferramentas instaladas e um posto que aguenta labs de virtualização e
+# containers rootless.
+#
+# Empacotado (e não copiado para a imagem) porque estes valores VÃO mudar: um
+# limite de inotify que hoje chega, amanhã não chega. Quem instalou a v1.0 tem
+# de poder receber a correcção com um `pacman -Syu`.
+#
+# Nota de fronteira: /etc/skel NÃO vem aqui. Skel só é lido quando se cria um
+# utilizador — actualizá-lo mais tarde não muda nada a quem já existe. Esses
+# ficheiros continuam no overlay da ISO, que é onde fazem sentido.
+
+pkgname=delonix-os-settings
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="DelonixOS — afinação de kernel, cgroups, limites, KVM e arranque para labs de DevOps/SRE"
+arch=('any')
+url="https://ngolacloud.com"
+license=('GPL-3.0-or-later')
+depends=('systemd' 'shadow')
+optdepends=('zram-generator: swap comprimida em RAM'
+            'tuned: perfil de desempenho delonix-lab'
+            'libvirt: rede default preparada no primeiro arranque'
+            'sddm: configuração do ecrã de login')
+backup=('etc/sysctl.d/99-delonix.conf'
+        'etc/modprobe.d/delonix-kvm.conf'
+        'etc/modules-load.d/delonix.conf'
+        'etc/security/limits.d/99-delonix.conf'
+        'etc/systemd/zram-generator.conf'
+        'etc/sddm.conf.d/10-delonix.conf'
+        'etc/mkinitcpio.conf.d/delonix.conf'
+        'etc/tuned/delonix-lab/tuned.conf')
+source=("delonix-os-$pkgver.tar.gz")
+sha256sums=('SKIP')
+install=delonix-os-settings.install
+
+package() {
+    cp -a "$srcdir/settings/." "$pkgdir/"
+    chmod 0755 "$pkgdir/usr/lib/delonix/firstboot"
+}

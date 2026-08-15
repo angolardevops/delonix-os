@@ -1,0 +1,227 @@
+# DelonixOS
+
+**A Linux distribution for the people who run platforms.**
+DevOps · SRE · Platform Engineering — built on Manjaro KDE Plasma.
+
+🇬🇧 English · 🇦🇴 [Português de Angola](README.pt-AO.md)
+
+---
+
+The goal is not the smallest image. It is **open the laptop and work**: no
+toolchains to install, no kernel to tune, no afternoon spent discovering why
+`cargo build` spends longer linking than compiling.
+
+```
+Manjaro (Arch) ──► rolling, stable base · pacman + AUR
+      +
+Plasma 6, no fat ──► no PIM, no office, no games, no file indexing,
+                     no animations (reversible with one command)
+      +
+platform kit ──► k8s, IaC, networking, secrets, rootless containers,
+                 KVM/libvirt/cloud-hypervisor, AWS+GCP, Claude Code
+      +
+dev environment ──► Rust, Go, Python, Node — configured, not just installed
+                    PostgreSQL, Redis, MongoDB · Firefox/Chrome/Edge
+      +
+tuned at the factory ──► RAM (zram), CPU (tuned), GPU/NPU, I/O (udev),
+                        network (BBR+fq), cgroups, limits
+      +
+Delonix identity ──► GRUB, animated Plymouth, SDDM, KSplash, theme, wallpapers
+```
+
+📖 **[Full tool list, grouped by profile](docs/en/tools-by-profile.md)** — what a
+DevOps, an SRE and a Platform Engineer each get out of the box.
+
+---
+
+## Why another distro
+
+Every engineer who operates infrastructure repeats the same setup on a fresh
+machine: install the toolchains, raise the kernel limits that break
+`kubectl logs -f`, and eventually discover that rootless containers silently
+ignore resource limits because cgroups were never delegated. DelonixOS does that
+work once, in the open, with the reason for every decision written down.
+
+Three things it refuses to do:
+
+- **No root daemon for containers.** The house engine (Delonix Runtime) and
+  Podman are rootless. The `docker` CLI is installed and talks to the rootless
+  Podman socket, so your muscle memory keeps working — but `dockerd` stays off
+  unless you turn it on deliberately.
+- **No decoration you pay for.** Desktop animations, blur and file indexing cost
+  GPU, memory and latency. They are off by default and come back with
+  `delonix-toolbox eyecandy on`.
+- **No tuning left to you.** I/O scheduler per disk type, BBR with `fq`, inotify
+  limits, zram, cgroup delegation, GPU/NPU drivers — all applied before you
+  first log in.
+
+---
+
+## Tuning that comes done
+
+This is what separates a distro with nice packages from one that works:
+
+- **cgroup v2 delegated** to the user session (`Delegate=cpu cpuset io memory pids`).
+  Without it, rootless containers silently ignore resource limits.
+- **subuid/subgid** guaranteed on first boot. Without them, rootless dies with
+  `newuidmap: uid range not allowed`.
+- **inotify** raised to 1M watches. The kernel default breaks with three
+  `kubectl logs -f` and an IDE open.
+- **`vm.max_map_count`**, **`nofile=1M`**, **zram with zstd**, **earlyoom** — so a
+  growing local cluster does not cost you the session.
+- **Real labs**: nested KVM (a hypervisor inside a VM), wider neighbour and
+  conntrack tables (dozens of VMs plus hundreds of containers on one bridge stop
+  producing *neighbour table overflow*), `fs.aio-max-nr` for QEMU I/O, and the
+  `tuned` **delonix-lab** profile active from first boot.
+- **I/O per disk type** (udev rules): NVMe with no scheduler (the device reorders
+  better and burns less CPU), SSD on `mq-deadline`, spinning disk on `bfq` —
+  which is what keeps the desktop usable while a 40 GB VM image copies.
+- **Network**: BBR **with the `fq` qdisc** (without it BBR loses the pacing that
+  makes it worth having) and raised TCP buffers.
+- **GPU/NPU**: OpenCL and Level Zero on Intel, VA-API so video decodes on the GPU
+  instead of the CPU, and the **NPU driver** for Core Ultra.
+- **Responsiveness**: `ananicy-cpp` prioritises the foreground process, so a
+  32-thread `cargo build` does not stall the browser.
+
+`delonix-doctor` checks all of it and exits non-zero if something is missing.
+
+---
+
+## Quick start
+
+```bash
+delonix-doctor                                  # is this machine actually ready?
+delonix-toolbox list                            # optional profiles
+delonix-toolbox db start postgres redis mongo   # databases ship installed but stopped
+delonix-toolbox eyecandy on                     # want the animations back?
+```
+
+---
+
+## Building the ISO
+
+`buildiso` (manjaro-tools) only runs on Arch/Manjaro and needs real root (chroot,
+mount, loop, mksquashfs). `build.sh` handles that by starting a privileged
+Manjaro container — you do not need Manjaro installed.
+
+```bash
+make iso
+```
+
+Requirements: `podman` (with `sudo`) or `docker`, ~35 GB free, 60–120 min.
+On an Arch/Manjaro host: `sudo ./scripts/in-container-build.sh`.
+
+Part of that time is the **local AUR repository**: Chrome, Edge, MongoDB,
+`gcloud`, Claude Code and Antigravity do not exist in the repositories, and the
+`pacman` used by `buildiso` does not know what the AUR is. The build compiles
+them into a `[delonix-aur]` repository. If one fails to build, the ISO **still
+ships** without that tool, with a warning — never an hour lost to an upstream
+PKGBUILD.
+
+When it finishes, the build prints the QEMU command for the ISO it just made:
+
+```bash
+make qemu-cmd     # print it again
+make test         # or just boot it
+```
+
+Before spending an hour on a build:
+
+```bash
+make verify       # files, blocklist, syntax, theme coherence
+make check        # + every package exists, and no declared conflicts
+```
+
+`make check` has already caught what usually breaks these projects: `khotkeys`
+(gone in Plasma 6), `p7zip` (now `7zip`), `redis` (Arch moved to `valkey`), and
+`tlp` declaring a conflict with `tuned` — that last one aborts the build 40
+minutes in.
+
+---
+
+## Updates: what is a package, what is the image
+
+A file copied into the ISO is written once and **never changes again** — whoever
+installed v1.0 would keep that theme and that tuning forever. So everything that
+needs to evolve ships as a pacman package:
+
+| Package | Contains |
+|---|---|
+| `delonix-os-branding` | Plymouth/SDDM/GRUB/Plasma themes, wallpapers |
+| `delonix-os-settings` | sysctl, limits, cgroups, KVM, initramfs, tuned |
+| `delonix-os-tools` | `delonix-doctor`, `delonix-toolbox` |
+| `delonix-os` | meta-package — this is what the ISO installs |
+
+Only what gains nothing from being updated stays in the image overlay:
+`/etc/skel` (read only when a user is created) and the two files owned by other
+packages, `/etc/default/grub` and `/etc/plymouth/plymouthd.conf`. Claiming those
+would make pacman refuse the install; instead, two **pacman hooks** re-apply our
+choice whenever `grub` or `plymouth` is upgraded, without overriding anyone who
+changed them on purpose.
+
+---
+
+## Repository layout
+
+```
+delonix-os/
+├── iso-profiles/delonix/devops/     manjaro-tools profile
+│   ├── profile.conf                 session, services, boot args
+│   ├── Packages-Root                base system
+│   ├── Packages-Desktop             minimal Plasma + the whole platform kit
+│   ├── Packages-Live                live environment only (Calamares)
+│   ├── Packages-Mhwd                drivers
+│   ├── desktop-overlay/             /etc/skel + files owned by other packages
+│   └── live-overlay/                live session only
+├── packaging/                       the house packages (what gets updated)
+│   ├── delonix-os-branding/         themes + pacman hooks
+│   ├── delonix-os-settings/         system tuning
+│   ├── delonix-os-tools/            delonix-doctor, delonix-toolbox
+│   └── delonix-os/                  meta-package
+├── branding/gen-assets.py           generates every brand PNG (and the animation)
+├── packages/
+│   ├── blocklist.txt                what stays out, and why (enforced at build)
+│   └── aur.list                     what gets compiled during the build
+├── scripts/                         build · verify · qemu · packaging
+└── docs/                            en/ · pt-AO/
+```
+
+---
+
+## Documentation
+
+| English | Português de Angola |
+|---|---|
+| [Tools by profile](docs/en/tools-by-profile.md) | [Ferramentas por perfil](docs/pt-AO/ferramentas-por-perfil.md) |
+| [Design decisions](docs/en/decisions.md) | [Decisões de desenho](docs/pt-AO/decisoes.md) |
+| [Validating a build](docs/en/validation.md) | [Validar um build](docs/pt-AO/validacao.md) |
+| [Roadmap](docs/en/roadmap.md) | [Roteiro](docs/pt-AO/roteiro.md) |
+
+Code comments in this repository are written in Portuguese — that is where the
+reasoning lives, and it is kept in the language the work was done in.
+
+---
+
+## Status
+
+Profile, overlays, branding, packaging and build tooling are complete and
+validated: **392 packages** resolved against the Arch/AUR repositories, no
+declared conflicts, pre-flight check green. The first ISO is being built.
+
+Contributions are welcome — especially hardware reports (does the NPU show up?
+does nested virtualization work on your CPU?) and packaging fixes.
+
+---
+
+## Author
+
+**Walter Angolar** — DevOps · SRE · Platform Engineering
+
+- LinkedIn: [walter-angolar](https://www.linkedin.com/in/walter-angolar-02a96b24/)
+- GitHub: [@angolardevops](https://github.com/angolardevops)
+
+Part of the **N'GolaCloud** platform effort.
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE).

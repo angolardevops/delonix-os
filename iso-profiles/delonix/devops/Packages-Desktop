@@ -1,0 +1,398 @@
+# DelonixOS — DevOps / SRE / Platform Engineering Edition
+# Camada de desktop + ferramentas de trabalho.
+#
+# Princípio de curadoria (ver ../../../packages/blocklist.txt para o que foi
+# deliberadamente REMOVIDO em relação à Manjaro KDE stock):
+#   1. Plasma mínimo: plasma-desktop + o que uma workstation precisa mesmo.
+#      NÃO instalamos o grupo `plasma` nem o `kde-applications`.
+#   2. Zero PIM (kmail/akonadi/korganizer), zero office, zero jogos, zero
+#      leitores de multimédia pesados, zero stack de impressão por omissão.
+#   3. Uma ferramenta por função. Sem duplicados.
+#   4. Runtimes de linguagem e CLIs de cloud NÃO vão na ISO — instalam-se a
+#      pedido com `delonix-toolbox` (mantém a imagem leve).
+
+##############################################################################
+# 1. Plasma — mínimo viável
+##############################################################################
+plasma-desktop
+plasma-workspace
+plasma-workspace-wallpapers
+plasma-nm
+plasma-pa
+plasma-systemmonitor
+plasma-firewall
+plasma-disks
+plasma-browser-integration
+kscreen
+kinfocenter
+kgamma
+kmenuedit
+kde-cli-tools
+kdeplasma-addons
+polkit-kde-agent
+kwalletmanager
+kwallet-pam
+xdg-desktop-portal-kde
+xdg-user-dirs
+xdg-utils
+kde-gtk-config
+breeze-gtk
+breeze-icons
+sddm
+sddm-kcm
+qt6-wayland
+qt5-wayland
+qt6-multimedia-ffmpeg   # escolhe o backend: sem isto o pacman pergunta a meio do build
+
+##############################################################################
+# 2. Aplicações de desktop — só as que um engenheiro usa mesmo
+##############################################################################
+konsole                 # terminal do KDE (integração com Dolphin/Kate)
+kitty                   # terminal principal: GPU, ligações, splits
+dolphin
+ark
+kate
+spectacle               # screenshots para post-mortems e runbooks
+okular                  # PDF (arquitecturas, contratos, RFCs)
+gwenview
+kcalc
+partitionmanager
+firefox                 # consolas cloud, Grafana, ArgoCD UI
+google-chrome           # [aur] o que as consolas de cloud assumem que usas
+microsoft-edge-stable-bin  # [aur] Entra ID/Intune e portais que só ele abre
+profile-sync-daemon     # perfis dos browsers em tmpfs: menos I/O, menos desgaste
+keepassxc               # cofre local (não substitui Vault/SOPS)
+remmina                 # RDP/VNC para janelas de manutenção
+freerdp
+
+##############################################################################
+# 2b. A distro propriamente dita — pacotes da casa, repo [delonix]
+##############################################################################
+# O branding, a afinação de sistema e as ferramentas NÃO são ficheiros copiados
+# para dentro da imagem: são pacotes. É a diferença entre uma ISO que envelhece
+# e uma distro que recebe actualizações. Compilados por scripts/build-os-packages.sh.
+delonix-os              # [delonix] meta: branding + settings + tools
+
+##############################################################################
+# 3. Manjaro — gestão do sistema
+##############################################################################
+manjaro-settings-manager                    # [manjaro] kernels, locale, drivers
+manjaro-kde-settings                        # [manjaro]
+manjaro-browser-settings                    # [manjaro]
+mhwd-nvidia
+pamac-cli                                   # [manjaro] gestor em CLI
+octopi                                      # [manjaro/aur] frontend Qt (leve)
+flatpak                                     # para as excepções (Slack, Teams…)
+
+##############################################################################
+# 4. Shell e produtividade de terminal — o coração da distro
+##############################################################################
+zsh
+zsh-completions
+zsh-autosuggestions
+zsh-syntax-highlighting
+starship
+tmux
+fzf
+ripgrep
+fd
+bat
+eza
+zoxide
+atuin                   # histórico pesquisável e sincronizável
+direnv
+jq
+yq
+btop
+htop
+iotop
+ncdu
+duf
+fastfetch
+tldr
+progress
+pv
+moreutils
+parallel
+entr
+watchexec
+difftastic
+hexyl
+just                    # runner de tarefas por projecto (o Makefile sem as armadilhas)
+procs                   # `ps` legível
+dust                    # onde está o disco a ser gasto
+yazi                    # gestor de ficheiros em terminal, rápido
+
+##############################################################################
+# 5. Git e fluxo de trabalho
+##############################################################################
+git
+git-lfs
+git-delta
+lazygit
+github-cli
+glab
+pre-commit
+gnupg
+pinentry
+openssh
+sshfs
+mosh
+
+##############################################################################
+# 6. Containers — rootless e sem daemon (regra da casa)
+##############################################################################
+# O motor por omissão é o Delonix Runtime (instalado pelo
+# scripts/fetch-delonix-bins.sh para /usr/local/bin). Podman/buildah ficam como
+# rede de segurança para imagens OCI de terceiros — também rootless.
+#
+# O pacote `docker` entra pelo CLI (docker/compose/buildx), mas o DAEMON FICA
+# DESLIGADO (ver disable_systemd no profile.conf): o .zshrc aponta DOCKER_HOST
+# ao socket rootless do podman, por isso `docker ps` funciona sem dockerd e sem
+# root. Quem quiser mesmo o daemon: `sudo systemctl enable --now docker`.
+docker                  # só o cliente é usado; docker.service fica desactivado
+docker-compose
+docker-buildx
+podman
+buildah
+skopeo
+crun
+runc
+slirp4netns
+fuse-overlayfs
+netavark
+aardvark-dns
+umoci
+dive
+lazydocker              # TUI para containers (fala com o podman via DOCKER_HOST)
+ctop                    # top de containers
+
+##############################################################################
+# 7. Kubernetes / plataforma
+##############################################################################
+kubectl
+kubectx
+helm
+k9s
+kustomize
+stern
+argocd
+cilium-cli
+etcd                    # etcdctl para diagnóstico do control plane
+cfssl
+eksctl
+
+##############################################################################
+# 7b. CLIs de cloud — pedidos para estarem prontos a usar
+##############################################################################
+aws-cli-v2
+aws-vault                                   # credenciais AWS fora do disco em claro
+google-cloud-cli                            # [aur] construído no repo local
+google-cloud-cli-gke-gcloud-auth-plugin     # [aur] auth do GKE para o kubectl
+
+##############################################################################
+# 7b2. Cluster local e validação de manifestos
+##############################################################################
+kind                    # cluster k8s local em containers — funciona com o podman
+                        # rootless (KIND_EXPERIMENTAL_PROVIDER=podman)
+kubeconform             # valida manifestos contra o schema ANTES do apply
+krew                    # gestor de plugins do kubectl
+
+##############################################################################
+# 7c. Virtualização — KVM/libvirt e Cloud Hypervisor prontos a usar
+##############################################################################
+# Um posto de labs críticos corre VMs a sério, não só containers.
+qemu-full                                   # inclui qemu-system-x86_64 e utilitários
+libvirt
+virt-manager
+virt-install
+virt-viewer
+libguestfs                                  # inspecção/edição de imagens de disco
+edk2-ovmf                                   # firmware UEFI para as VMs
+swtpm                                       # TPM virtual (Windows 11, atestação)
+virtiofsd                                   # partilha de ficheiros host↔VM
+dnsmasq                                     # rede default do libvirt
+dmidecode
+cloud-hypervisor                            # [aur] VMM leve para microVMs
+cloud-image-utils                           # cloud-init: seed ISO para labs
+
+##############################################################################
+# 8. Infra as Code / configuração
+##############################################################################
+opentofu
+ansible
+ansible-lint
+packer
+yamllint
+shellcheck
+shfmt
+cue
+
+##############################################################################
+# 9. Rede e diagnóstico (o kit de SRE em incidente)
+##############################################################################
+nmap
+tcpdump
+termshark
+mtr
+iperf3
+socat
+traceroute
+whois
+ipcalc
+conntrack-tools
+iftop
+nethogs
+bmon
+speedtest-cli
+xh                      # cliente HTTP moderno (curl continua no root)
+websocat
+gping                   # ping com gráfico: vê-se a latência a degradar
+bandwhich               # que processo está a consumir a rede, agora
+dog                     # cliente DNS moderno (o dig continua lá)
+hurl                    # testes de HTTP em ficheiro, versionáveis
+grpcurl                 # [aur]
+oha                     # carga HTTP (substitui o wrk, que saiu dos repos)
+
+##############################################################################
+# 10. Segurança / segredos / supply chain
+##############################################################################
+age
+gitleaks                # segredos commitados: apanha antes de irem para o remoto
+syft                    # SBOM de imagens e de código — exigido em auditorias
+crane                   # operações em registos OCI sem descarregar a imagem toda
+sops
+step-cli
+cosign
+trivy
+openssl
+openbsd-netcat
+nftables
+lynis
+
+##############################################################################
+# 10c. Backup e recuperação — a parte do trabalho que só se nota quando falta
+##############################################################################
+restic                  # backups incrementais, cifrados e deduplicados
+rclone                  # move dados entre S3/GCS/Azure/local com a mesma sintaxe
+snapper                 # instantâneos do sistema (precisa de raiz em Btrfs)
+snap-pac                # tira um instantâneo ANTES de cada `pacman -Syu`:
+                        # numa distro rolling, é a diferença entre um susto e um
+                        # fim-de-semana perdido
+btrfs-assistant         # gerir e restaurar esses instantâneos com interface
+
+##############################################################################
+# 10d. Dados e logs — o que um SRE faz o dia inteiro
+##############################################################################
+duckdb                  # SQL sobre CSV/JSON/Parquet: análise de logs sem pipeline
+miller                  # awk/sed/cut para CSV, TSV e JSON
+visidata                # explorar um ficheiro de dados grande em modo texto
+jless                   # navegar JSON enorme sem o carregar todo no editor
+glow                    # ler markdown (runbooks, ADRs) no terminal
+d2                      # diagramas de arquitectura a partir de texto
+
+##############################################################################
+# 11. Bases de dados — servidores locais, prontos mas PARADOS
+##############################################################################
+# Vêm instalados e configurados; NÃO arrancam sozinhos. Três servidores a
+# dormir custam ~600 MB de RAM que ninguém pediu. Ligam-se quando fazem falta:
+#     delonix-toolbox db start postgres redis mongo
+postgresql              # servidor + psql
+postgresql-libs
+pgcli                   # cliente com autocompletar
+valkey                  # o Redis dos repositórios (provides=redis; traz redis-cli)
+mongodb-bin             # [aur] servidor MongoDB
+mongosh-bin             # [aur] shell moderna do Mongo
+mongodb-tools           # [aur] mongodump, mongorestore, mongoimport
+mariadb-clients
+sqlite
+
+##############################################################################
+# 10b. Aceleração — GPU, NPU e compute prontos a usar
+##############################################################################
+# Sem isto, uma workstation moderna corre com metade do hardware desligado:
+# descodificação de vídeo por software, OpenCL indisponível, NPU invisível.
+intel-compute-runtime   # OpenCL/Level Zero em Intel (provides opencl-driver)
+intel-media-driver      # VA-API: vídeo descodificado na GPU, não na CPU
+intel-npu-driver        # NPU dos Core Ultra — inferência local sem GPU
+level-zero-loader
+vulkan-icd-loader
+clinfo                  # confirma que o OpenCL está mesmo lá
+intel-gpu-tools
+nvtop                   # monitor de GPU (NVIDIA/AMD/Intel)
+radeontop
+# NVIDIA e ROCm entram pelo mhwd/toolbox — dependem do hardware detectado.
+
+##############################################################################
+# 11b. Observabilidade e desempenho do próprio posto
+##############################################################################
+# Um lab crítico partido diagnostica-se com estas, não com o htop.
+perf
+bpftrace
+sysstat                 # sar, iostat, pidstat
+numactl
+irqbalance
+ananicy-cpp             # dá prioridade automática ao que está em primeiro plano
+tuned                   # gestor de energia E de desempenho (perfil delonix-lab)
+tuned-ppd               # fala a API do power-profiles-daemon: o KDE mantém o
+                        # seletor de energia, servido pelo tuned por baixo
+cpupower
+
+##############################################################################
+# 12. Linguagens — prontas a construir projectos reais, sem voltas
+##############################################################################
+# A configuração que as torna úteis está no /etc/skel: linker `mold` e cache
+# `sccache` no ~/.cargo/config.toml, GOPATH/GOBIN no PATH, uv como gestor de
+# ambientes Python. Instalar o compilador é metade do trabalho; a outra metade
+# é não obrigar cada pessoa a redescobrir a mesma configuração.
+
+## Rust
+# `rust` e não `rustup`: o pacote dos repositórios traz compilador, cargo,
+# clippy e rustfmt a funcionar SEM rede, logo no primeiro arranque. O rustup só
+# ganha quando é preciso trocar de toolchain por projecto — e isso está a um
+# comando de distância (`delonix-toolbox install lang-rust-multi`).
+rust
+rust-analyzer
+mold                    # linker paralelo: liga projectos grandes 3-5x mais rápido
+sccache                 # cache de compilação partilhada entre projectos
+cargo-watch
+cargo-edit
+
+## Go
+go
+gopls
+delve                   # debugger
+go-tools                # staticcheck e companhia
+
+## Python
+python
+uv                      # resolve e instala ordens de grandeza mais rápido que o pip
+ruff                    # linter + formatador
+python-pipx
+python-poetry
+python-pynvim
+
+## JavaScript / TypeScript (também é o runtime do claude-code)
+nodejs
+npm
+pnpm
+
+## Ferramentas de build
+neovim
+tree-sitter-cli
+base-devel
+cmake
+ninja
+meson
+yay                     # [aur/manjaro] acesso ao AUR
+claude-code             # [aur] Claude Code CLI
+antigravity             # [aur] IDE Antigravity
+
+##############################################################################
+# 13. Fontes (necessárias para os prompts com ícones e para logs)
+##############################################################################
+ttf-jetbrains-mono-nerd
+ttf-fira-code
+noto-fonts
+noto-fonts-emoji
+ttf-dejavu

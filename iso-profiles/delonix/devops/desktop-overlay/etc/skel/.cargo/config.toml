@@ -1,0 +1,26 @@
+# DelonixOS — configuração global do Cargo.
+#
+# É isto que separa "o Rust está instalado" de "dá para trabalhar": ligar um
+# projecto grande com o linker default demora mais do que compilá-lo.
+
+[build]
+# `mold` é 3-5x mais rápido a ligar do que o `ld` do sistema.
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+# Compilação partilhada entre projectos: a segunda vez que compilas a mesma
+# dependência (serde, tokio…) sai da cache em vez de gastar CPU.
+rustc-wrapper = "sccache"
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[net]
+git-fetch-with-cli = true      # respeita a tua configuração de SSH e de proxy
+
+[registries.crates-io]
+protocol = "sparse"            # índice esparso: `cargo update` deixa de demorar
+
+[profile.dev]
+debug = 1                      # símbolos que chegam para o gdb, metade do tamanho
+
+# Para desligar o sccache num projecto: RUSTC_WRAPPER= cargo build
