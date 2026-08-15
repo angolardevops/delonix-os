@@ -8,6 +8,11 @@
 #   ./scripts/build.sh                     # ISO completa
 #   ./scripts/build.sh --engine docker     # forçar motor
 #   ./scripts/build.sh --shell             # entrar no contentor sem construir
+#   ./scripts/build.sh --clean             # deitar fora os chroots e recomeçar
+#
+# Por omissão os chroots são REAPROVEITADOS entre tentativas: um erro numa lista
+# de pacotes deixa de custar quatro horas. Usa `--clean` quando quiseres ter a
+# certeza de que nada ficou de uma tentativa anterior.
 #   ./scripts/build.sh --kernel linux612   # escolher o kernel
 #
 # Requisitos no host: podman (root) ou docker, ~25 GB livres, ~30-60 min.
@@ -27,6 +32,7 @@ SHELL_ONLY=0
 while [[ $# -gt 0 ]]; do
     case $1 in
         --engine)  ENGINE=$2; shift 2 ;;
+        --clean)   export DELONIX_CLEAN=1; shift ;;
         --kernel)  KERNEL=$2; shift 2 ;;
         --shell)   SHELL_ONLY=1; shift ;;
         --image)   IMAGE=$2; shift 2 ;;
@@ -97,6 +103,7 @@ echo "→ a construir com $ENGINE (imagem: $IMAGE, kernel: $KERNEL)"
     -w /work \
     -e DELONIX_KERNEL="$KERNEL" \
     -e DELONIX_SKIP_AUR="${DELONIX_SKIP_AUR:-0}" \
+    -e DELONIX_CLEAN="${DELONIX_CLEAN:-0}" \
     "${OVERRIDE_MOUNT[@]}" \
     "$IMAGE" "${CMD[@]}"
 status=$?

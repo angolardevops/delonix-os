@@ -123,6 +123,24 @@ for d in root-overlay live-overlay; do
         bad "$d/ em falta — o buildiso recusa o perfil"
 done
 
+# O `buildiso` copia os overlays com `cp -LR`, que SEGUE os links. Um link para
+# uma unidade systemd que não existe na máquina de build mata o build depois de
+# 40 minutos — já aconteceu com o podman.socket e o psd.service.
+echo "== links simbólicos nos overlays (o buildiso segue-os) =="
+links=$(find "$PROFILE"/*-overlay -type l 2>/dev/null)
+if [[ -z $links ]]; then
+    ok "nenhum link simbólico nos overlays"
+else
+    while read -r l; do
+        [[ -n $l ]] || continue
+        if [[ -e $l ]]; then
+            warn "link (resolve nesta máquina, pode não resolver na de build): ${l#$PROFILE/}"
+        else
+            bad "link PENDURADO: ${l#$PROFILE/} → $(readlink "$l")"
+        fi
+    done <<<"$links"
+fi
+
 echo "== coerência (overlay + pacotes) =="
 SETTINGS="$REPO_DIR/packaging/delonix-os-settings/payload"
 grep -q "Current=delonix" "$SETTINGS/etc/sddm.conf.d/10-delonix.conf" &&

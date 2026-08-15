@@ -155,8 +155,29 @@ EOF
 # --- 7. construir --------------------------------------------------------------
 # `-p` recebe o NOME do perfil, não o caminho: o buildiso descobre a edição com
 # `find ${run_dir} -maxdepth 2 -name devops` → delonix/devops.
+#
+# DUAS lições pagas com horas:
+#
+#   `-c`  NÃO limpa os chroots antes de construir. O default do buildiso é
+#         limpar (clean_first=true), o que significa reinstalar ~1500 pacotes
+#         do zero a cada tentativa — quatro horas por cada erro de uma linha.
+#         Com `-c`, uma repetição reaproveita o rootfs e demora minutos.
+#         Para forçar um build limpo: DELONIX_CLEAN=1.
+#
+#   `-f`  NÃO é "force": é `full_iso`, e no manjaro-tools isso força
+#         `extra=true` — passando a instalar tudo o que está marcado `>extra`,
+#         contra o que o nosso profile.conf declara. Estava a ser passado por
+#         engano desde o início.
+BUILD_ARGS=(-p "$PROFILE" -k "$KERNEL" -b stable)
+if [[ ${DELONIX_CLEAN:-0} == 1 ]]; then
+    log "build LIMPO pedido — os chroots vão ser reconstruídos do zero"
+else
+    BUILD_ARGS+=(-c)
+    log "a reaproveitar os chroots (DELONIX_CLEAN=1 força um build limpo)"
+fi
+
 log "buildiso — perfil $PROFILE (edição $EDITION), kernel $KERNEL"
-buildiso -f -p "$PROFILE" -k "$KERNEL" -b stable
+buildiso "${BUILD_ARGS[@]}"
 
 iso=$(find /var/cache/manjaro-tools/iso -name '*.iso' -printf '%T@ %p\n' 2>/dev/null |
       sort -rn | head -1 | cut -d' ' -f2-)

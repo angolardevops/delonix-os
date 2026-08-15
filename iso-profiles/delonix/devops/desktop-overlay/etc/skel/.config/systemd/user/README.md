@@ -1,8 +1,17 @@
-# Serviços do utilizador pré-activados
+# Serviços do utilizador
 
-`sockets.target.wants/podman.socket` é o equivalente a teres corrido
-`systemctl --user enable podman.socket` — é assim que o **CLI do docker**
-encontra um backend nesta distro (o `DOCKER_HOST` do `.zshrc` aponta para este
-socket) sem existir nenhum daemon a correr como root.
+O `podman.socket` (que dá backend ao CLI do `docker`) e o `psd.service` (perfis
+dos browsers em RAM) são activados no **primeiro arranque**, pelo
+`delonix-firstboot`, e não por links guardados aqui.
 
-Para desligar: `systemctl --user disable --now podman.socket`.
+Porquê: o `buildiso` copia os overlays com `cp -LR`, que **segue** os links
+simbólicos. Um link para `/usr/lib/systemd/user/podman.socket` não resolve na
+máquina onde a ISO é construída, e o build morre com um `cannot stat` — depois
+de 40 minutos de trabalho.
+
+Para ver ou mexer:
+
+```bash
+systemctl --user status podman.socket psd.service
+systemctl --user disable --now psd.service     # se não quiseres os perfis em RAM
+```

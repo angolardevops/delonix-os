@@ -55,6 +55,21 @@ while IFS=: read -r user _ uid _ _ home shell; do
             "$home/.config/delonix" \
             "$home/.kube" 2>/dev/null || true
     fi
+
+    # --- 3b. serviços do utilizador -------------------------------------------
+    # Estes links NÃO podem viver no /etc/skel: o `buildiso` copia os overlays
+    # com `cp -LR`, que segue os links, e um link para uma unidade que ainda não
+    # existe na máquina de build mata o build inteiro. Criamo-los aqui, onde as
+    # unidades existem mesmo — e só se existirem.
+    for par in "sockets.target.wants:podman.socket" "default.target.wants:psd.service"; do
+        alvo=${par#*:}
+        [[ -f /usr/lib/systemd/user/$alvo ]] || continue
+        destino="$home/.config/systemd/user/${par%%:*}"
+        install -d -o "$user" -g "$user" -m 0755 "$destino" 2>/dev/null || continue
+        ln -sfn "/usr/lib/systemd/user/$alvo" "$destino/$alvo"
+        chown -h "$user:$user" "$destino/$alvo" 2>/dev/null || true
+        log "activado para $user: $alvo"
+    done
 done </etc/passwd
 
 # --- 4. libvirt: rede default pronta a usar ------------------------------------
