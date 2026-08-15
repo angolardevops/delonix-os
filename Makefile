@@ -22,7 +22,7 @@ KERNEL     ?= linux612
 # `**` só funciona com globstar ligado.
 ISO         = $(shell find $(OUT_DIR) -name '*.iso' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 
-.PHONY: all branding preview packages verify check preflight iso shell test qemu-cmd cli-test distro-test clean help
+.PHONY: all branding preview packages verify check preflight iso shell test qemu-cmd cli-test distro-test clean help clean-live lint
 
 all: verify
 
@@ -45,6 +45,16 @@ verify:
 # O shellcheck apanha o que o `bash -n` não apanha (crases em texto, arrays,
 # variáveis por definir). Corre num contentor para não obrigar ninguém a
 # instalá-lo só para construir a ISO.
+# A fase `live` do buildiso guarda um marcador; se ela falhou a meio, o chroot
+# fica num estado que o build seguinte reaproveita — incluindo o que estava mal.
+# Isto apaga SÓ essa fase (a `root` e a `desktop`, que demoram horas, ficam).
+clean-live:
+	@echo "→ a apagar a fase live do chroot (root e desktop mantêm-se)"
+	@sudo rm -rf $(REPO_DIR)/.cache/chroots/buildiso/devops/x86_64/livefs \
+	             $(REPO_DIR)/.cache/chroots/buildiso/devops/x86_64/livefs.lock \
+	             $(REPO_DIR)/.cache/chroots/buildiso/devops/x86_64/build.make_image_live
+	@echo "→ feito; 'make iso' reconstrói só a fase live"
+
 lint:
 	@podman run --rm -v "$(REPO_DIR):/w:ro" -w /w \
 		docker.io/koalaman/shellcheck-alpine:stable sh -c \

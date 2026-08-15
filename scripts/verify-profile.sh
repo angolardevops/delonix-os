@@ -250,20 +250,68 @@ from pathlib import Path
 profile = Path(sys.argv[1])
 repo_dir = Path(sys.argv[2])
 BRANCH = os.environ.get("DELONIX_BRANCH", "stable")
-MIRROR = os.environ.get("DELONIX_MIRROR", "https://mirror.easyname.at/manjaro")
+# NUNCA um mirror único e fixo. O que estava aqui antes (mirror.easyname.at)
+# ficou um mês atrasado sem avisar, e durante esse mês esta verificação aprovou
+# alegremente uma lista de pacotes contra uma fotografia velha do repositório —
+# incluindo o `manjaro-live-base` que fez o build falhar a 40 minutos.
+#
+# Um mirror atrasado é pior do que um mirror em baixo: em baixo dá erro, atrasado
+# dá respostas erradas com ar de certas. Daí experimentarmos vários e escolhermos
+# pelo `Last-Modified`, não pelo primeiro que responder.
+MIRRORS = [os.environ["DELONIX_MIRROR"]] if os.environ.get("DELONIX_MIRROR") else [
+    "https://mirror.alpix.eu/manjaro",
+    "https://ftp.gwdg.de/pub/linux/manjaro",
+    "https://mirror.netcologne.de/manjaro",
+    "https://manjaro.ipacct.com/manjaro",
+]
 CACHE = Path(os.environ.get("DELONIX_CACHE", repo_dir / ".cache")) / "repo-db"
 MAX_IDADE = 12 * 3600      # 12 h: as dbs mudam devagar, mas não são eternas
+MAX_ATRASO_MIRROR = 7 * 86400   # um mirror com mais de uma semana não serve
+
+
+def escolher_mirror() -> str:
+    """O mirror mais RECENTE dos que respondem, não o primeiro."""
+    melhor, melhor_data = None, 0
+    for m in MIRRORS:
+        try:
+            req = urllib.request.Request(f"{m}/{BRANCH}/extra/x86_64/extra.db",
+                                         method="HEAD")
+            with urllib.request.urlopen(req, timeout=15) as r:
+                lm = r.headers.get("Last-Modified")
+                if not lm:
+                    continue
+                ts = time.mktime(time.strptime(lm, "%a, %d %b %Y %H:%M:%S %Z"))
+                if ts > melhor_data:
+                    melhor, melhor_data = m, ts
+        except Exception:
+            continue
+        if len(MIRRORS) == 1:      # forçado pelo ambiente: não há escolha a fazer
+            break
+    if melhor is None:
+        print("  \033[33m!\033[0m nenhum mirror respondeu — a usar a cache local")
+        return MIRRORS[0]
+    atraso = time.time() - melhor_data
+    if atraso > MAX_ATRASO_MIRROR:
+        print(f"  \033[31m✗\033[0m o mirror mais recente tem {atraso/86400:.0f} dias "
+              f"de atraso ({melhor})")
+        print("      validar contra isto dá aprovações falsas — corrige os mirrors")
+    else:
+        print(f"  \033[32m✓\033[0m mirror com {atraso/3600:.0f}h: {melhor}")
+    return melhor
 
 
 def manjaro_index() -> set:
     """Nomes de pacote na Manjaro do ramo escolhido (com cache local)."""
     CACHE.mkdir(parents=True, exist_ok=True)
     nomes = set()
+    mirror = None
     for repo in ("core", "extra", "multilib"):
         alvo = CACHE / f"{BRANCH}-{repo}.db"
         idade = time.time() - alvo.stat().st_mtime if alvo.exists() else 1e9
         if idade > MAX_IDADE:
-            url = f"{MIRROR}/{BRANCH}/{repo}/x86_64/{repo}.db"
+            if mirror is None:
+                mirror = escolher_mirror()
+            url = f"{mirror}/{BRANCH}/{repo}/x86_64/{repo}.db"
             try:
                 urllib.request.urlretrieve(url, alvo)
             except Exception as e:
