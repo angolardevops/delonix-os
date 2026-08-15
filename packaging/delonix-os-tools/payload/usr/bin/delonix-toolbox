@@ -10,6 +10,7 @@
 #   delonix-toolbox install k8s-extra lang-java
 #   delonix-toolbox remove lang-java
 #   delonix-toolbox db start postgres redis mongo   (vêm instaladas mas paradas)
+#   delonix-toolbox lab up observability            (Grafana+Prometheus+Loki locais)
 #   delonix-toolbox eyecandy on|off                 (animações do desktop)
 #   delonix-toolbox unprivileged-ports on|off
 set -euo pipefail
@@ -172,6 +173,73 @@ cmd_db() {
     done
 }
 
+# --- laboratórios locais ------------------------------------------------------
+# Stacks que um SRE quer ligadas algumas horas por semana, não 24/7. Correm em
+# containers rootless com `podman kube play` — sem daemon, sem docker-compose,
+# e sem consumir nada quando estão em baixo.
+LABS_DIR=/usr/share/delonix/labs
+LABS_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/delonix/labs"
+
+cmd_lab() {
+    local action=${1:-list}; shift || true
+    local lab=${1:-}
+
+    _lab_file() {
+        local f="$LABS_DIR/$1.yaml"
+        [[ -f $f ]] || die "laboratório desconhecido: $1 (vê: delonix-toolbox lab list)"
+        echo "$f"
+    }
+
+    case $action in
+        list|"")
+            printf '%sLaboratórios disponíveis%s\n\n' "$BLD" "$RST"
+            for f in "$LABS_DIR"/*.yaml; do
+                [[ -e $f ]] || continue
+                local nome; nome=$(basename "$f" .yaml)
+                local estado="parado"
+                podman pod exists "delonix-$nome" 2>/dev/null && estado="${GRN}a correr${RST}"
+                # A segunda linha do ficheiro traz a descrição.
+                local desc; desc=$(sed -n '3p' "$f" | sed 's/^# *//')
+                printf '  %-16s %-22b %s%s%s\n' "$nome" "$estado" "$DIM" "$desc" "$RST"
+            done
+            printf '\n  delonix-toolbox lab up <nome>\n\n'
+            ;;
+        up)
+            [[ -n $lab ]] || die "diz-me qual: delonix-toolbox lab up observability"
+            local f; f=$(_lab_file "$lab")
+            command -v podman >/dev/null || die "preciso do podman"
+            mkdir -p "$LABS_DATA/$lab"
+            info "a levantar o laboratório '$lab' (rootless)"
+            # Os volumes hostPath do YAML são relativos ao directório de trabalho.
+            ( cd "$LABS_DATA/$lab" && podman kube play --replace "$f" )
+            done_ "'$lab' a correr"
+            case $lab in
+                observability)
+                    printf '\n  Grafana:    http://localhost:3000  (sem login, é local)\n'
+                    printf '  Prometheus: http://localhost:9090\n'
+                    printf '  Loki:       http://localhost:3100\n'
+                    printf '  Dados em:   %s/%s\n\n' "$LABS_DATA" "$lab"
+                    ;;
+            esac
+            ;;
+        down|stop)
+            [[ -n $lab ]] || die "diz-me qual: delonix-toolbox lab down observability"
+            local f; f=$(_lab_file "$lab")
+            podman kube down "$f" && done_ "'$lab' parado (os dados ficam em $LABS_DATA/$lab)"
+            ;;
+        status)
+            podman pod ps --filter "name=delonix-" \
+                --format "table {{.Name}} {{.Status}} {{.NumberOfContainers}}" 2>/dev/null ||
+                warn "sem laboratórios a correr"
+            ;;
+        logs)
+            [[ -n $lab ]] || die "diz-me qual"
+            podman pod logs -f "delonix-$lab" 2>/dev/null || die "'$lab' não está a correr"
+            ;;
+        *) die "usa: delonix-toolbox lab list|up|down|status|logs [nome]" ;;
+    esac
+}
+
 # --- animações do desktop -----------------------------------------------------
 cmd_eyecandy() {
     local state=${1:-}
@@ -224,6 +292,7 @@ case ${1:-help} in
     install|add)         shift; cmd_install "$@" ;;
     remove|rm)           shift; cmd_remove "$@" ;;
     db)                  shift; cmd_db "$@" ;;
+    lab)                 shift; cmd_lab "$@" ;;
     eyecandy)            shift; cmd_eyecandy "$@" ;;
     unprivileged-ports)  shift; cmd_unprivileged_ports "$@" ;;
     help|--help|-h)

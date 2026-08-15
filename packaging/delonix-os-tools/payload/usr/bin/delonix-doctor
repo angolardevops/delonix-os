@@ -100,7 +100,8 @@ missing=()
 for t in kubectl helm k9s kubectx tofu ansible podman buildah skopeo git jq yq \
          age sops trivy cosign nvim rg fd starship zsh tmux docker \
          aws gcloud virsh qemu-system-x86_64 perf bpftrace \
-         cargo go python uv node psql valkey-cli restic rclone just duckdb; do
+         cargo go python uv node psql valkey-cli restic rclone just duckdb \
+         clang gdb golangci-lint mypy buf hyperfine cargo-nextest; do
     command -v "$t" >/dev/null || missing+=("$t")
 done
 (( ${#missing[@]} == 0 )) && ok "kit base completo" || bad "em falta: ${missing[*]}"
@@ -148,9 +149,22 @@ systemctl is-active --quiet ananicy-cpp && ok "ananicy-cpp a dar prioridade ao f
     warn "ananicy-cpp parado"
 
 section "Desktop"
+if [[ ${XDG_SESSION_TYPE:-} == wayland ]]; then
+    command -v wl-copy >/dev/null && ok "área de transferência (wl-clipboard)" ||
+        bad "sem wl-clipboard — `| wl-copy` não funciona nesta sessão Wayland"
+else
+    command -v xclip >/dev/null && ok "área de transferência (xclip)" || warn "sem xclip"
+fi
 anim=$(kreadconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 2>/dev/null)
 [[ $anim == 0 ]] && ok "animações desligadas (eyecandy on para repor)" ||
     warn "animações a ${anim:-?} — custa GPU e latência"
+
+section "Laboratórios"
+if command -v podman >/dev/null; then
+    labs=$(podman pod ps --filter "name=delonix-" --format "{{.Name}}" 2>/dev/null | tr '\n' ' ')
+    [[ -n ${labs// /} ]] && warn "a correr: $labs (consome RAM; delonix-toolbox lab down)" ||
+        printf '  %s·%s nenhum a correr (delonix-toolbox lab list)\n' "$DIM" "$RST"
+fi
 
 section "Bases de dados (paradas até serem precisas)"
 for u in postgresql valkey mongodb; do

@@ -25,6 +25,9 @@ The layer nobody thinks about until it's missing.
 | `neovim` | Pre-configured: 2-space indent for YAML/HCL, Kubernetes manifests detected by path, no plugin manager to fight. |
 | `jq` `yq` `jless` | JSON and YAML surgery. |
 | `just` | Per-project task runner — a Makefile without the tab traps. |
+| `wl-clipboard` / `xclip` | `command \| wl-copy`. Without it there is no pipe to the clipboard on Wayland, which is the default session. |
+| `gdb` `lldb` `valgrind` `heaptrack` `hyperfine` | Debug it, find the leak, and prove it got faster with statistics instead of a feeling. |
+| `protobuf` + `buf` | Define gRPC contracts, not just call them (`grpcurl` was already here). |
 | `Claude Code` · `Antigravity` | AI assistant in the terminal and an AI-first IDE. |
 
 ---
@@ -55,10 +58,10 @@ person otherwise rediscovers alone:
 
 | Language | What ships | Configuration you don't have to do |
 |---|---|---|
-| **Rust** | `rust` `rust-analyzer` `mold` `sccache` `cargo-watch` `cargo-edit` | `~/.cargo/config.toml` already uses the **mold** linker and **sccache**. On a large project, linking stops taking longer than compiling. Sparse registry index enabled. |
-| **Go** | `go` `gopls` `delve` `go-tools` | `GOPATH`/`GOBIN` on `PATH`, `GOTOOLCHAIN=auto` so a project that pins another Go version just fetches it. |
-| **Python** | `python` `uv` `ruff` `pipx` `poetry` | `uv` manages interpreters and environments; `PIP_REQUIRE_VIRTUALENV` blocks accidental global installs. |
-| **Node** | `nvm` `nodejs` `npm` `pnpm` | `nvm` is what you use day to day — lazily loaded and honouring `.nvmrc` when you enter a project. The system `nodejs` is the floor, so a machine with no network still has a Node on first boot. |
+| **Rust** | `rust` `rust-analyzer` `clang` `mold` `sccache` `cargo-nextest` `cargo-audit` `cargo-deny` `cargo-watch` `cargo-edit` | `~/.cargo/config.toml` already uses the **mold** linker and **sccache**. On a large project, linking stops taking longer than compiling. Sparse registry index enabled. |
+| **Go** | `go` `gopls` `delve` `go-tools` `golangci-lint` `goreleaser` | `GOPATH`/`GOBIN` on `PATH`, `GOTOOLCHAIN=auto` so a project that pins another Go version just fetches it. |
+| **Python** | `python` `uv` `ruff` `mypy` `ipython` `pipx` `poetry` | `uv` manages interpreters and environments; `PIP_REQUIRE_VIRTUALENV` blocks accidental global installs. |
+| **Node** | `nvm` `nodejs` `npm` `pnpm` `typescript` | `nvm` is what you use day to day — lazily loaded and honouring `.nvmrc` when you enter a project. The system `nodejs` is the floor, so a machine with no network still has a Node on first boot. |
 
 The `rust` package ships instead of `rustup` on purpose: it works **offline**, on
 first boot. Multiple toolchains are one command away —
@@ -109,6 +112,24 @@ The keep-it-running half: incidents, latency, capacity, recovery.
 | `visidata` | Explore a large data file in the terminal, interactively. |
 | `jless` | Navigate a huge JSON without loading it into an editor. |
 | `glow` | Read runbooks and ADRs in the terminal. |
+
+### Local labs — observability without a cloud bill
+
+An SRE workstation with no local observability is a strange thing. But
+Prometheus, Grafana and Loki running as system services 24/7 would cost ~800 MB
+of RAM for something you use a few hours a week. So they ship as a **lab**:
+
+```bash
+delonix-toolbox lab up observability
+#   Grafana:    http://localhost:3000   (already wired to Prometheus and Loki)
+#   Prometheus: http://localhost:9090   (already scraping this machine)
+delonix-toolbox lab down observability  # gives the memory back; data is kept
+```
+
+It runs on **rootless Podman** via `podman kube play` — no daemon, no
+docker-compose. `node-exporter` is configured with **PSI pressure metrics**, the
+ones that actually explain "the machine feels slow". Point a job at your own
+`/metrics` endpoint and your service appears in the same dashboards.
 
 ### Backup and recovery
 

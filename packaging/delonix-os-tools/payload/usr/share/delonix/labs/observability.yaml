@@ -1,0 +1,186 @@
+# DelonixOS — laboratório de observabilidade local
+#
+#   delonix-toolbox lab up observability
+#
+# Prometheus + Grafana + Loki + node-exporter, a correr em containers ROOTLESS
+# (`podman kube play`, sem daemon e sem docker-compose). Grafana em
+# http://localhost:3000 já ligado ao Prometheus e ao Loki.
+#
+# Porquê num laboratório e não instalado no sistema: um SRE precisa disto
+# ligado algumas horas por semana, não 24/7 a comer 800 MB. `lab down` devolve
+# a memória; `lab up` traz tudo de volta em segundos.
+#
+# Os dados ficam em ~/.local/share/delonix/labs/observability — sobrevivem a um
+# `lab down`, para não perderes as dashboards que montaste.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: delonix-obs-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        origem: delonixos-lab
+    scrape_configs:
+      # A própria máquina: CPU, memória, disco, rede, temperaturas.
+      - job_name: host
+        static_configs:
+          - targets: ['localhost:9100']
+      - job_name: prometheus
+        static_configs:
+          - targets: ['localhost:9090']
+      # Acrescenta aqui o que estiveres a construir. Uma aplicação local com
+      # /metrics em :8080 aparece nas dashboards sem mais nada:
+      # - job_name: a-minha-app
+      #   static_configs:
+      #     - targets: ['localhost:8080']
+
+  loki.yml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+      log_level: warn
+    common:
+      instance_addr: 127.0.0.1
+      path_prefix: /loki
+      storage:
+        filesystem:
+          chunks_directory: /loki/chunks
+          rules_directory: /loki/rules
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+    schema_config:
+      configs:
+        - from: 2024-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    limits_config:
+      retention_period: 168h        # sete dias chegam para um laboratório
+
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://localhost:9090
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://localhost:3100
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: delonix-observability
+  labels:
+    app: delonix-lab
+spec:
+  # Um pod só: todos partilham a rede, por isso o Grafana fala com o Prometheus
+  # em localhost e não é preciso inventar uma rede de containers.
+  restartPolicy: OnFailure
+  containers:
+    - name: prometheus
+      image: docker.io/prom/prometheus:latest
+      args:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=7d
+        - --web.enable-lifecycle
+      ports:
+        - containerPort: 9090
+          hostPort: 9090
+      volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus/prometheus.yml
+          subPath: prometheus.yml
+        - name: dados-prometheus
+          mountPath: /prometheus
+
+    - name: grafana
+      image: docker.io/grafana/grafana-oss:latest
+      env:
+        # Laboratório local: sem login. Não exponhas isto fora do 127.0.0.1.
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: Admin
+        - name: GF_AUTH_DISABLE_LOGIN_FORM
+          value: "true"
+        - name: GF_ANALYTICS_REPORTING_ENABLED
+          value: "false"
+        - name: GF_NEWS_FEED_ENABLED
+          value: "false"
+      ports:
+        - containerPort: 3000
+          hostPort: 3000
+      volumeMounts:
+        - name: config
+          mountPath: /etc/grafana/provisioning/datasources/datasources.yml
+          subPath: datasources.yml
+        - name: dados-grafana
+          mountPath: /var/lib/grafana
+
+    - name: loki
+      image: docker.io/grafana/loki:latest
+      args: ["-config.file=/etc/loki/loki.yml"]
+      ports:
+        - containerPort: 3100
+          hostPort: 3100
+      volumeMounts:
+        - name: config
+          mountPath: /etc/loki/loki.yml
+          subPath: loki.yml
+        - name: dados-loki
+          mountPath: /loki
+
+    - name: node-exporter
+      image: docker.io/prom/node-exporter:latest
+      args:
+        - --path.rootfs=/host
+        - --collector.disable-defaults
+        - --collector.cpu
+        - --collector.meminfo
+        - --collector.diskstats
+        - --collector.filesystem
+        - --collector.netdev
+        - --collector.loadavg
+        - --collector.pressure          # PSI: a métrica que explica "está lento"
+        - --collector.thermal_zone
+      ports:
+        - containerPort: 9100
+          hostPort: 9100
+      volumeMounts:
+        - name: host-raiz
+          mountPath: /host
+          readOnly: true
+
+  volumes:
+    - name: config
+      configMap:
+        name: delonix-obs-config
+    - name: dados-prometheus
+      hostPath:
+        path: ./prometheus
+        type: DirectoryOrCreate
+    - name: dados-grafana
+      hostPath:
+        path: ./grafana
+        type: DirectoryOrCreate
+    - name: dados-loki
+      hostPath:
+        path: ./loki
+        type: DirectoryOrCreate
+    - name: host-raiz
+      hostPath:
+        path: /
+        type: Directory

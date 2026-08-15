@@ -129,7 +129,7 @@ glibc-locales
 nano
 nano-syntax-highlighting
 micro
-vi
+# NOTA: sem `vi` — saiu dos repositórios e o nano/micro/neovim cobrem o caso.
 less
 which
 man-db

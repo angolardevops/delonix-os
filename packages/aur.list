@@ -20,3 +20,5 @@ microsoft-edge-stable-bin                # browser (idem)
 mongodb-bin                              # servidor MongoDB (licença SSPL: fora dos repos)
 mongosh-bin                              # shell do MongoDB
 mongodb-tools                            # mongodump/mongorestore/mongoimport
+kind-bin                                 # k8s local; o `kind` ainda não está na Manjaro stable
+intel-npu-driver-bin                     # NPU dos Core Ultra; idem

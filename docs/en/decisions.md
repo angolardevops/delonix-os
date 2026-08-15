@@ -152,7 +152,33 @@ What did not change is the underlying criterion: nothing ships without a
 function. Office, PIM, games and file indexing stay out — and now desktop
 animations too, which are GPU and memory spent on decoration.
 
-## 12. Validation before the build
+## 12. Validate against Manjaro, not against Arch
+
+For weeks `make check` confirmed packages against **archlinux.org**. That seemed
+reasonable — Manjaro is derived from Arch. It took a 40-minute build to prove
+they are not the same thing: `kind` and `intel-npu-driver` exist in Arch and
+have not yet reached Manjaro **stable**, which is the branch we build against.
+`buildiso` only said so at the end, with `target not found`.
+
+The checker now goes to the right source: Manjaro's own databases (`core.db`,
+`extra.db`, `multilib.db`) for the configured branch, with the AUR as a
+fallback and a 12-hour local cache.
+
+Two effects:
+
+- **Correctness**: it validates against what `pacman` will actually find. It also
+  reads the `%PROVIDES%` field, because that is how a request for `redis` is
+  satisfied by `valkey` — without it, the checker rejected perfectly installable
+  names.
+- **Speed**: from ~12 minutes (one HTTP call per package) to **10 seconds**
+  (three files, once a day). A check that takes twelve minutes does not get run
+  before every change; one that takes ten seconds does.
+
+The two missing packages moved to their AUR `-bin` variants (`kind-bin`,
+`intel-npu-driver-bin`), with a comment saying to switch back to the repository
+package once Manjaro syncs them.
+
+## 13. Validation before the build
 
 `verify-profile.sh` runs in seconds and catches what would otherwise only blow up
 20 minutes into `buildiso`: a wrong package name, a referenced theme that does not

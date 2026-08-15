@@ -157,123 +157,128 @@ for h in 95-delonix-plymouth.hook 96-delonix-grub.hook apply-plymouth apply-grub
 done
 
 if (( ONLINE )); then
-    echo "== pacotes existem nos repos (Arch/AUR) =="
+    echo "== pacotes existem na Manjaro (é lá que se constrói) =="
     python3 - "$PROFILE" "$REPO_DIR" <<'PY'
-import json, re, sys, time, urllib.parse, urllib.request
+"""
+Confirma que cada pacote existe MESMO onde a ISO vai ser construída.
+
+Lição paga com um build: validar contra o archlinux.org não chega. Construímos
+contra a Manjaro **stable**, que anda semanas atrás do Arch — o `kind` e o
+`intel-npu-driver` existiam no Arch e não na Manjaro, e o buildiso só o disse ao
+fim de 40 minutos, com um "target not found".
+
+Por isso a fonte de verdade aqui são as bases de dados da própria Manjaro
+(core.db, extra.db, multilib.db), com o AUR como segunda hipótese.
+"""
+import json, os, re, sys, tarfile, time, urllib.parse, urllib.request
 from pathlib import Path
 
 profile = Path(sys.argv[1])
-# Vem do shell: dentro de um heredoc o `__file__` é "<stdin>", por isso não dá
-# para derivar a raiz do repositório a partir do próprio ficheiro.
 repo_dir = Path(sys.argv[2])
-# Pacotes que SÓ existem nos repos da Manjaro — não estão no Arch nem no AUR.
-manjaro_only = {
-    "manjaro-system", "manjaro-release", "manjaro-keyring", "manjaro-hotfixes",
-    "mhwd", "mhwd-db", "mhwd-nvidia", "manjaro-settings-manager",
-    "manjaro-kde-settings", "manjaro-browser-settings", "manjaro-printer",
-    "manjaro-live-systemd", "manjaro-live-skel", "manjaro-rescue",
-    "grub-theme-live-manjaro", "pamac-cli", "mkinitcpio-openswap",
-    "install-grub", "update-grub", "udev-usb-sync", "manjaro-alsa",
-    # Existem nos repos da Manjaro mas já não no Arch (o `shared/Packages-Root`
-    # oficial da Manjaro usa-os na mesma).
-    "calamares", "vi",
-}
-# Os nossos: vivem no repositório local [delonix], construído no build.
-manjaro_only |= {"delonix-os", "delonix-os-branding", "delonix-os-settings",
-                 "delonix-os-tools"}
-names = []
-for f in profile.glob("Packages-*"):
-    for line in f.read_text().splitlines():
-        line = line.split("#")[0].strip()
-        if not line:
-            continue
-        # tokens condicionais do manjaro-tools: >extra, >multilib, >nonfree_*
-        name = [t for t in line.split() if not t.startswith(">")][-1:]
-        if not name:
-            continue
-        name = name[0]
-        # KERNEL é um marcador substituído no build (KERNEL, KERNEL-nvidia, …)
-        if name == "KERNEL" or name.startswith("KERNEL-"):
-            continue
-        names.append(name)
-names = sorted(set(names) - manjaro_only)
+BRANCH = os.environ.get("DELONIX_BRANCH", "stable")
+MIRROR = os.environ.get("DELONIX_MIRROR", "https://mirror.easyname.at/manjaro")
+CACHE = Path(os.environ.get("DELONIX_CACHE", repo_dir / ".cache")) / "repo-db"
+MAX_IDADE = 12 * 3600      # 12 h: as dbs mudam devagar, mas não são eternas
 
-def fetch(url):
-    """Devolve (dados, erro). Distinguir erro de rede de "não existe" é o que
-    evita falsos positivos: 3 timeouts seguidos não significam pacote inválido."""
-    last = None
+
+def manjaro_index() -> set:
+    """Nomes de pacote na Manjaro do ramo escolhido (com cache local)."""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    nomes = set()
+    for repo in ("core", "extra", "multilib"):
+        alvo = CACHE / f"{BRANCH}-{repo}.db"
+        idade = time.time() - alvo.stat().st_mtime if alvo.exists() else 1e9
+        if idade > MAX_IDADE:
+            url = f"{MIRROR}/{BRANCH}/{repo}/x86_64/{repo}.db"
+            try:
+                urllib.request.urlretrieve(url, alvo)
+            except Exception as e:
+                if not alvo.exists():
+                    print(f"  \033[33m!\033[0m não consegui obter {repo}.db ({e})")
+                    continue
+        try:
+            with tarfile.open(alvo) as t:
+                for m in t.getmembers():
+                    nome = m.name.strip("/")
+                    if m.isdir() and "/" not in nome:
+                        # <nome>-<versão>-<release>
+                        nomes.add(nome.rsplit("-", 2)[0])
+                    elif m.isfile() and nome.endswith("/desc"):
+                        # O pacman também satisfaz um pedido por `provides` — é
+                        # assim que `redis` é servido pelo `valkey`. Sem ler
+                        # isto, o verificador reprovava nomes perfeitamente
+                        # instaláveis.
+                        conteudo = t.extractfile(m).read().decode(errors="replace")
+                        bloco = re.search(r"%PROVIDES%\n(.*?)(?:\n\n|\Z)", conteudo, re.S)
+                        if bloco:
+                            for linha in bloco.group(1).split("\n"):
+                                linha = linha.strip()
+                                if linha:
+                                    nomes.add(re.split(r"[<>=]", linha)[0])
+        except Exception as e:
+            print(f"  \033[33m!\033[0m {alvo.name} ilegível ({e})")
+    return nomes
+
+
+def aur_existe(nome: str) -> bool:
+    q = urllib.parse.quote(nome, safe="")
     for _ in range(3):
         try:
-            return json.load(urllib.request.urlopen(url, timeout=20)), None
-        except Exception as e:          # noqa: BLE001 — queremos o motivo
-            last = e
-            time.sleep(1.5)
-    return None, last
+            d = json.load(urllib.request.urlopen(
+                f"https://aur.archlinux.org/rpc/?v=5&type=info&arg[]={q}", timeout=20))
+            return bool(d["resultcount"])
+        except Exception:
+            time.sleep(1.2)
+    return False
 
 
-missing, flaky, from_aur = [], [], []
-declared_conflicts = {}
-for n in names:
-    q = urllib.parse.quote(n, safe="")   # nomes com '+' (memtest86+) partem sem isto
-    d, err = fetch(f"https://archlinux.org/packages/search/json/?name={q}")
-    hits = [r for r in (d or {}).get("results", []) if r["arch"] in ("x86_64", "any")]
-    if hits:
-        # Guardamos os conflitos declarados: é o que apanha um `tlp` vs `tuned`
-        # ANTES de gastar uma hora de build a descobri-lo.
-        if hits[0].get("conflicts"):
-            declared_conflicts[n] = hits[0]["conflicts"]
-        continue
-    arch_err = err
-    d, err = fetch(f"https://aur.archlinux.org/rpc/?v=5&type=info&arg[]={q}")
-    if d and d["resultcount"]:
-        from_aur.append(n)
-        continue
-    if arch_err or err:
-        flaky.append(n)                  # rede falhou: não acusamos o pacote
-    else:
-        missing.append(n)
-    time.sleep(0.15)
-
-# Um pacote que só existe no AUR TEM de estar em packages/aur.list, senão o
-# buildiso não o encontra (o pacman não fala com o AUR).
-aur_list = {
-    line.split("#")[0].strip()
-    for line in (repo_dir / "packages/aur.list").read_text().splitlines()
-    if line.split("#")[0].strip()
-}
-orphans = [p for p in from_aur if p not in aur_list]
-if orphans:
-    print(f"  \033[31m✗\033[0m só existem no AUR e faltam em packages/aur.list: {' '.join(orphans)}")
-
-if flaky:
-    print(f"  \033[33m!\033[0m não deu para confirmar (rede): {' '.join(flaky)}")
-
-# --- conflitos entre pacotes da nossa própria lista ---------------------------
-# Um conflito SEM versão é fatal: o pacman recusa a transação e o build morre a
-# meio do make_image_desktop(). Com versão (ex.: `mkinitcpio<38`) é histórico —
-# refere-se a versões antigas que já não existem nos repositórios.
-name_set = set(names)
-clashes = []
-for pkg, conflicts in declared_conflicts.items():
-    for c in conflicts:
-        bare = re.split(r"[<>=]", c)[0].strip()
-        if bare == pkg or bare not in name_set:
+# --- o que as listas pedem ------------------------------------------------------
+nossos = {"delonix-os", "delonix-os-branding", "delonix-os-settings", "delonix-os-tools"}
+nomes = []
+for f in profile.glob("Packages-*"):
+    for linha in f.read_text().splitlines():
+        linha = linha.split("#")[0].strip()
+        if not linha:
             continue
-        if re.search(r"[<>=]", c):
-            continue                       # conflito versionado: histórico
-        clashes.append((pkg, bare))
-if clashes:
-    for a, b in clashes:
-        print(f"  \033[31m✗\033[0m conflito declarado: {a} não pode coexistir com {b}")
-else:
-    print(f"  \033[32m✓\033[0m sem conflitos declarados entre os pacotes da lista")
+        tok = [t for t in linha.split() if not t.startswith(">")]
+        if not tok:
+            continue
+        nome = tok[-1].split("=")[0]          # aceita fixação de versão
+        if nome == "KERNEL" or nome.startswith("KERNEL-"):
+            continue                          # marcador substituído no build
+        nomes.append(nome)
+nomes = sorted(set(nomes) - nossos)
 
-if missing or orphans or clashes:
-    if missing:
-        print(f"  \033[31m✗\033[0m {len(missing)} pacote(s) sem correspondência: {' '.join(missing)}")
+indice = manjaro_index()
+if not indice:
+    print("  \033[33m!\033[0m sem índice da Manjaro — verificação impossível")
+    sys.exit(0)
+print(f"  \033[32m✓\033[0m índice Manjaro {BRANCH}: {len(indice)} pacotes")
+
+em_falta, do_aur = [], []
+for n in nomes:
+    if n in indice:
+        continue
+    (do_aur if aur_existe(n) else em_falta).append(n)
+
+# --- coerência com o aur.list ---------------------------------------------------
+aur_list = {
+    l.split("#")[0].strip()
+    for l in (repo_dir / "packages/aur.list").read_text().splitlines()
+    if l.split("#")[0].strip()
+}
+orfaos = [p for p in do_aur if p not in aur_list]
+if orfaos:
+    print(f"  \033[31m✗\033[0m só existem no AUR e faltam em packages/aur.list: {' '.join(orfaos)}")
+if em_falta:
+    print(f"  \033[31m✗\033[0m {len(em_falta)} pacote(s) que a Manjaro {BRANCH} NÃO tem "
+          f"(nem o AUR): {' '.join(em_falta)}")
+    print(f"      É este o erro que o buildiso dá como 'target not found', aos 40 minutos.")
+
+if em_falta or orfaos:
     sys.exit(1)
-print(f"  \033[32m✓\033[0m {len(names) - len(flaky)} pacotes resolvidos "
-      f"({len(from_aur)} do AUR, todos declarados em aur.list)")
+print(f"  \033[32m✓\033[0m {len(nomes)} pacotes existem na Manjaro {BRANCH} "
+      f"({len(do_aur)} vêm do AUR, todos declarados)")
 PY
     (( $? )) && ((fails++))
 fi

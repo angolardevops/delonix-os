@@ -25,6 +25,9 @@ A camada em que ninguém pensa até faltar.
 | `neovim` | Já configurado: 2 espaços em YAML/HCL, manifestos de Kubernetes detectados pelo caminho, sem gestor de plugins para combater. |
 | `jq` `yq` `jless` | Cirurgia em JSON e YAML. |
 | `just` | Runner de tarefas por projecto — o Makefile sem as armadilhas dos tabs. |
+| `wl-clipboard` / `xclip` | `comando \| wl-copy`. Sem isto não há pipe para a área de transferência no Wayland, que é a sessão por omissão. |
+| `gdb` `lldb` `valgrind` `heaptrack` `hyperfine` | Depurar, encontrar a fuga, e provar que ficou mais rápido com estatística em vez de sensação. |
+| `protobuf` + `buf` | Definir contratos gRPC, não apenas chamá-los (o `grpcurl` já cá estava). |
 | `Claude Code` · `Antigravity` | Assistente de IA no terminal e um IDE pensado para IA. |
 
 ---
@@ -55,10 +58,10 @@ cada pessoa, de outra forma, redescobre sozinha:
 
 | Linguagem | O que vem | Configuração que já não tens de fazer |
 |---|---|---|
-| **Rust** | `rust` `rust-analyzer` `mold` `sccache` `cargo-watch` `cargo-edit` | O `~/.cargo/config.toml` já usa o linker **mold** e a cache **sccache**. Num projecto grande, ligar deixa de demorar mais do que compilar. Índice esparso ligado. |
-| **Go** | `go` `gopls` `delve` `go-tools` | `GOPATH`/`GOBIN` no `PATH` e `GOTOOLCHAIN=auto`, para um projecto que fixa outra versão de Go a ir buscá-la sozinho. |
-| **Python** | `python` `uv` `ruff` `pipx` `poetry` | O `uv` gere interpretadores e ambientes; o `PIP_REQUIRE_VIRTUALENV` trava instalações globais por acidente. |
-| **Node** | `nvm` `nodejs` `npm` `pnpm` | O `nvm` é o que se usa no dia a dia — carregado de forma preguiçosa e a respeitar o `.nvmrc` ao entrar num projecto. O `nodejs` do sistema é o chão, para uma máquina sem rede ter um Node no primeiro arranque. |
+| **Rust** | `rust` `rust-analyzer` `clang` `mold` `sccache` `cargo-nextest` `cargo-audit` `cargo-deny` `cargo-watch` `cargo-edit` | O `~/.cargo/config.toml` já usa o linker **mold** e a cache **sccache**. Num projecto grande, ligar deixa de demorar mais do que compilar. Índice esparso ligado. |
+| **Go** | `go` `gopls` `delve` `go-tools` `golangci-lint` `goreleaser` | `GOPATH`/`GOBIN` no `PATH` e `GOTOOLCHAIN=auto`, para um projecto que fixa outra versão de Go a ir buscá-la sozinho. |
+| **Python** | `python` `uv` `ruff` `mypy` `ipython` `pipx` `poetry` | O `uv` gere interpretadores e ambientes; o `PIP_REQUIRE_VIRTUALENV` trava instalações globais por acidente. |
+| **Node** | `nvm` `nodejs` `npm` `pnpm` `typescript` | O `nvm` é o que se usa no dia a dia — carregado de forma preguiçosa e a respeitar o `.nvmrc` ao entrar num projecto. O `nodejs` do sistema é o chão, para uma máquina sem rede ter um Node no primeiro arranque. |
 
 Vem o pacote `rust` e não o `rustup`, de propósito: funciona **sem rede**, no
 primeiro arranque. Várias toolchains ficam a um comando —
@@ -110,6 +113,25 @@ A metade de manter de pé: incidentes, latência, capacidade, recuperação.
 | `visidata` | Explorar um ficheiro de dados grande no terminal, de forma interactiva. |
 | `jless` | Navegar um JSON enorme sem o carregar num editor. |
 | `glow` | Ler runbooks e ADRs no terminal. |
+
+### Laboratórios locais — observabilidade sem factura de cloud
+
+Uma workstation de SRE sem observabilidade local é uma coisa estranha. Mas ter o
+Prometheus, o Grafana e o Loki como serviços do sistema 24/7 custaria ~800 MB de
+RAM para algo que se usa poucas horas por semana. Por isso vêm como
+**laboratório**:
+
+```bash
+delonix-toolbox lab up observability
+#   Grafana:    http://localhost:3000   (já ligado ao Prometheus e ao Loki)
+#   Prometheus: http://localhost:9090   (já a recolher métricas desta máquina)
+delonix-toolbox lab down observability  # devolve a memória; os dados ficam
+```
+
+Corre em **Podman rootless** com `podman kube play` — sem daemon e sem
+docker-compose. O `node-exporter` vem com as **métricas de pressão (PSI)**, que
+são as que explicam de facto o "está lento". Aponta um job para o teu próprio
+`/metrics` e o teu serviço aparece nas mesmas dashboards.
 
 ### Backup e recuperação
 

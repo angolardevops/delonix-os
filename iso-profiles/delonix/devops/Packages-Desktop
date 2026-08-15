@@ -35,6 +35,9 @@ kwallet-pam
 xdg-desktop-portal-kde
 xdg-user-dirs
 xdg-utils
+wl-clipboard            # `| wl-copy` — sem isto não há pipe para a área de
+                        # transferência no Wayland, que é a sessão por omissão
+xclip                   # o mesmo para as sessões X11
 kde-gtk-config
 breeze-gtk
 breeze-icons
@@ -138,6 +141,8 @@ pinentry
 openssh
 sshfs
 mosh
+sshuttle                # VPN por cima de SSH: chegar a uma subrede privada sem cliente
+croc                    # passar um ficheiro/dump entre máquinas a meio de um incidente
 
 ##############################################################################
 # 6. Containers — rootless e sem daemon (regra da casa)
@@ -193,8 +198,10 @@ google-cloud-cli-gke-gcloud-auth-plugin     # [aur] auth do GKE para o kubectl
 ##############################################################################
 # 7b2. Cluster local e validação de manifestos
 ##############################################################################
-kind                    # cluster k8s local em containers — funciona com o podman
-                        # rootless (KIND_EXPERIMENTAL_PROVIDER=podman)
+kind-bin                # [aur] cluster k8s local em containers — funciona com o
+                        # podman rootless (KIND_EXPERIMENTAL_PROVIDER=podman).
+                        # É `-bin` porque o `kind` dos repos do Arch ainda não
+                        # chegou à Manjaro stable, que é o que construímos.
 kubeconform             # valida manifestos contra o schema ANTES do apply
 krew                    # gestor de plugins do kubectl
 
@@ -220,6 +227,7 @@ cloud-image-utils                           # cloud-init: seed ISO para labs
 # 8. Infra as Code / configuração
 ##############################################################################
 opentofu
+tflint                  # erros de HCL que o `plan` só descobre no fim
 ansible
 ansible-lint
 packer
@@ -251,6 +259,8 @@ gping                   # ping com gráfico: vê-se a latência a degradar
 bandwhich               # que processo está a consumir a rede, agora
 dog                     # cliente DNS moderno (o dig continua lá)
 hurl                    # testes de HTTP em ficheiro, versionáveis
+protobuf                # protoc: definir contratos, não só chamá-los
+buf                     # lint, breaking-change e geração de código a partir de .proto
 grpcurl                 # [aur]
 oha                     # carga HTTP (substitui o wrk, que saiu dos repos)
 
@@ -258,6 +268,7 @@ oha                     # carga HTTP (substitui o wrk, que saiu dos repos)
 # 10. Segurança / segredos / supply chain
 ##############################################################################
 age
+openbao                 # cliente de segredos dinâmicos (fork aberto do Vault)
 gitleaks                # segredos commitados: apanha antes de irem para o remoto
 syft                    # SBOM de imagens e de código — exigido em auditorias
 crane                   # operações em registos OCI sem descarregar a imagem toda
@@ -300,6 +311,8 @@ d2                      # diagramas de arquitectura a partir de texto
 postgresql              # servidor + psql
 postgresql-libs
 pgcli                   # cliente com autocompletar
+dbmate                  # migrações de schema: o passo entre "servidor a correr"
+                        # e "projecto com base de dados"
 valkey                  # o Redis dos repositórios (provides=redis; traz redis-cli)
 mongodb-bin             # [aur] servidor MongoDB
 mongosh-bin             # [aur] shell moderna do Mongo
@@ -314,7 +327,9 @@ sqlite
 # descodificação de vídeo por software, OpenCL indisponível, NPU invisível.
 intel-compute-runtime   # OpenCL/Level Zero em Intel (provides opencl-driver)
 intel-media-driver      # VA-API: vídeo descodificado na GPU, não na CPU
-intel-npu-driver        # NPU dos Core Ultra — inferência local sem GPU
+intel-npu-driver-bin    # [aur] NPU dos Core Ultra — inferência local sem GPU.
+                        # Também ainda não está na Manjaro stable; quando chegar,
+                        # troca-se pelo pacote do repositório.
 level-zero-loader
 vulkan-icd-loader
 clinfo                  # confirma que o OpenCL está mesmo lá
@@ -357,17 +372,24 @@ mold                    # linker paralelo: liga projectos grandes 3-5x mais ráp
 sccache                 # cache de compilação partilhada entre projectos
 cargo-watch
 cargo-edit
+cargo-nextest           # corre testes em paralelo e diz quais falharam, não um muro
+cargo-audit             # CVEs nas dependências
+cargo-deny              # licenças e dependências duplicadas — política, não sugestão
 
 ## Go
 go
 gopls
 delve                   # debugger
 go-tools                # staticcheck e companhia
+golangci-lint           # o linter que todos os projectos Go de facto usam
+goreleaser              # publicar binários multi-plataforma a partir de uma tag
 
 ## Python
 python
 uv                      # resolve e instala ordens de grandeza mais rápido que o pip
 ruff                    # linter + formatador
+mypy                    # tipos: a diferença entre um script e uma ferramenta
+ipython
 python-pipx
 python-poetry
 python-pynvim
@@ -382,8 +404,23 @@ nvm
 nodejs
 npm
 pnpm
+typescript
 
-## Ferramentas de build
+## Ferramentas de build e depuração
+# `clang` não é opcional: o ~/.cargo/config.toml que enviamos usa-o como linker,
+# e o bindgen precisa do libclang para qualquer crate que toque em C. Sem ele,
+# o primeiro `cargo build` numa máquina nova falha com "linker not found".
+clang
+lld
+ccache
+pkgconf
+gdb
+lldb
+valgrind                # fugas de memória em ferramentas nativas
+heaptrack               # onde é que a memória foi parar
+hyperfine               # medir "é mais rápido?" com estatística, não com sensação
+tokei                   # tamanho real de um projecto
+sd                      # substituição de texto sem a sintaxe do sed
 neovim
 tree-sitter-cli
 base-devel
