@@ -25,57 +25,36 @@ UPSTREAM=https://gitlab.manjaro.org/profiles-and-settings/iso-profiles.git
 
 log() { printf '\n\e[1m→ %s\e[0m\n' "$*"; }
 
-# --- 0. mirrors ACTUALIZADOS --------------------------------------------------
+# --- 0. mirrors ------------------------------------------------------------
 # Isto não é afinação de velocidade — é correcção.
 #
-# O que aconteceu a 2026-08-15: um mirror da lista estava um mês atrasado, serviu
-# uma base de dados velha, e o pacman resolveu `manjaro-live-base` para a versão
-# 20241119 em vez da 20260802. Essa versão antiga instala /usr/bin/manjaro-live;
-# a nova instala /usr/bin/manjaro-live-setup — que é o que o manjaro-tools ACTUAL
-# invoca. Resultado, a 40 minutos de build:
+# A 2026-08-15 um mirror da lista estava um mês atrasado. Serviu uma base de
+# dados velha, o pacman resolveu `manjaro-live-base` para a versão de 2024 (que
+# instala /usr/bin/manjaro-live) em vez da actual (que instala
+# /usr/bin/manjaro-live-setup, o binário que o manjaro-tools de hoje invoca), e
+# o build morreu ao fim de 40 minutos com:
 #
 #   chroot: failed to run command '/usr/bin/manjaro-live-setup': No such file
 #
-# Pior: como a versão velha já estava na cache de pacotes partilhada, o pacman
-# instalou-a sem descarregar nada. Não houve erro de rede nenhum para se ver.
+# E como a versão velha já estava na cache de pacotes partilhada, o pacman
+# instalou-a sem descarregar nada — não houve um único erro de rede para se ver.
 #
-# `--fasttrack` só mantém mirrors que estão MESMO sincronizados, e é para isso
-# que existe. Se falhar (sem rede para a API), seguimos com a lista da imagem —
-# a verificação de frescura abaixo é que decide se isso é aceitável.
-if [[ -n ${DELONIX_MIRROR:-} ]]; then
-    # Escape de emergência: um único mirror escolhido à mão. Serve para quando o
-    # fasttrack não chega, ou para reproduzir um build exactamente como foi.
-    log "mirror forçado: $DELONIX_MIRROR"
-    printf '## DelonixOS — mirror forçado por DELONIX_MIRROR\nServer = %s/stable/$repo/$arch\n' \
-        "$DELONIX_MIRROR" >/etc/pacman.d/mirrorlist
-else
-    log "a escolher mirrors sincronizados (--fasttrack)"
-    pacman-mirrors --api --protocol https --set-branch "${BRANCH:-stable}" >/dev/null 2>&1 || true
-    pacman-mirrors --fasttrack 5 >/dev/null 2>&1 || log "aviso: pacman-mirrors falhou; a usar a lista da imagem"
-fi
+# O `pacman-mirrors --fasttrack` foi a primeira tentativa de correcção e falhou
+# de outra maneira: escolheu, a partir desta rede, cinco mirrors nos EUA que ela
+# nem resolve ("Could not resolve host"). Ele decide pela API da Manjaro; as
+# perguntas que interessam são locais — este mirror responde-me a mim, e os
+# dados dele são recentes? É o que o pick-mirrors.sh verifica.
+log "a escolher mirrors alcançáveis e actualizados"
+bash "$SCRIPTS/pick-mirrors.sh" || exit 1
 
 # --- 1. dependências ----------------------------------------------------------
 log "a sincronizar pacman e instalar manjaro-tools"
 pacman-key --init 2>/dev/null || true
 pacman-key --populate archlinux manjaro 2>/dev/null || true
 
-# `-Syy` e não `-Sy`: força o descarregamento das bases de dados mesmo que o
-# pacman as considere actuais. Uma db em cache vinda de um mirror atrasado é
-# exactamente o problema que estamos a evitar.
-pacman -Syy --noconfirm >/dev/null 2>&1 || true
-
-# Guarda de frescura: se as bases de dados que vamos usar têm mais de uma
-# semana, alguma coisa está errada com os mirrors e mais vale parar aqui do que
-# construir uma ISO com pacotes de há meses.
-db_idade=$(( ($(date +%s) - $(stat -c %Y /var/lib/pacman/sync/extra.db 2>/dev/null || date +%s)) / 86400 ))
-if (( db_idade > 7 )); then
-    log "ERRO: a base de dados 'extra' tem $db_idade dias — os mirrors estão atrasados."
-    log "      Construir assim dá uma ISO com pacotes desactualizados e falhas"
-    log "      difíceis de explicar. Tenta outra vez, ou força um mirror:"
-    log "      DELONIX_MIRROR=https://mirror.alpix.eu/manjaro make iso"
-    exit 1
-fi
-log "bases de dados com $db_idade dia(s)"
+# O picker já garantiu mirrors recentes; isto confirma que a sincronização
+# aconteceu de facto, em vez de assumir.
+bash "$SCRIPTS/sync-pacman.sh" || exit 1
 
 pacman -Su --noconfirm --needed \
     manjaro-tools-iso manjaro-tools-base git rsync curl \

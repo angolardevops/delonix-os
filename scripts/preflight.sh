@@ -81,7 +81,9 @@ printf '%s%d vêm dos repositórios locais e só existem durante o build%s\n\n' 
 SAIDA=$(mktemp); trap 'rm -f "$LISTA" "$LOCAIS" "$SAIDA"' EXIT
 "$ENGINE" run --rm \
     --dns=1.1.1.1 --dns=8.8.8.8 \
+    -v "$REPO_DIR/scripts:/s:ro" \
     -e PACOTES="$REMOTOS" \
+    -e DELONIX_MIRROR="${DELONIX_MIRROR:-}" \
     "$IMAGE" bash -c '
         set -o pipefail
         pacman-key --init >/dev/null 2>&1
@@ -91,13 +93,11 @@ SAIDA=$(mktemp); trap 'rm -f "$LISTA" "$LOCAIS" "$SAIDA"' EXIT
         # corrigir uma coisa que não estava partida.
         grep -q "^\[multilib\]" /etc/pacman.conf ||
             printf "\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n" >>/etc/pacman.conf
-        # Os mesmos mirrors que o build vai usar — senão o preflight aprova uma
-        # transação que não é a que vai acontecer. Ver in-container-build.sh.
-        pacman-mirrors --api --protocol https --set-branch stable >/dev/null 2>&1 || true
-        pacman-mirrors --fasttrack 5 >/dev/null 2>&1 || true
-        pacman -Syy --noconfirm >/dev/null 2>&1 || { echo "PREFLIGHT-SYNC-FALHOU"; exit 1; }
-        idade=$(( ($(date +%s) - $(stat -c %Y /var/lib/pacman/sync/extra.db 2>/dev/null || date +%s)) / 86400 ))
-        (( idade > 7 )) && echo "PREFLIGHT-DB-VELHA:$idade"
+        # Os MESMOS mirrors que o build vai usar. Se o preflight resolver
+        # contra outros repositórios, aprova uma transação que não é a que vai
+        # acontecer — foi exactamente assim que passou uma versão de 2024.
+        bash /s/pick-mirrors.sh || { echo "PREFLIGHT-SEM-MIRRORS"; exit 1; }
+        bash /s/sync-pacman.sh || { echo "PREFLIGHT-SYNC-FALHOU"; exit 1; }
         # -Sp: resolve tudo (dependências, conflitos, fornecedores) e imprime as
         # URLs em vez de descarregar. É a transação verdadeira, a seco.
         pacman -Sp --needed --noconfirm $PACOTES 2>&1
@@ -106,6 +106,12 @@ RC=$?
 
 falhas=0
 
+if grep -q 'PREFLIGHT-SEM-MIRRORS' "$SAIDA"; then
+    bad "nenhum mirror da Manjaro está alcançável e actualizado a partir daqui"
+    bad "  (a lista tentada está acima; força um com DELONIX_MIRROR=...)"
+    exit 1
+fi
+
 if grep -q 'PREFLIGHT-SYNC-FALHOU' "$SAIDA"; then
     bad "não consegui sincronizar os repositórios dentro do contentor (rede?)"
     exit 1
@@ -113,12 +119,6 @@ fi
 
 # Um mirror atrasado resolve pacotes que já não são os actuais, e o build só
 # falha lá à frente com um erro que não aponta para aqui. Aconteceu.
-if grep -q 'PREFLIGHT-DB-VELHA' "$SAIDA"; then
-    dias=$(grep -oP 'PREFLIGHT-DB-VELHA:\K[0-9]+' "$SAIDA" | head -1)
-    bad "as bases de dados têm $dias dias — os mirrors estão atrasados"
-    bad "  o build ia instalar versões antigas e falhar de maneiras estranhas"
-    exit 1
-fi
 
 # --- 1. pacotes que o pacman não encontra ------------------------------------
 if grep -qE 'target not found' "$SAIDA"; then
