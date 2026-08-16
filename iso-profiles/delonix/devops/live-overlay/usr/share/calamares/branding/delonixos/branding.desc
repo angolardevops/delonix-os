@@ -43,11 +43,18 @@ images:
     productIcon:    "logo.png"
     productWelcome: "welcome.png"
 
+# CONTRASTE. Na primeira ISO que abriu o instalador, os passos da barra lateral
+# liam-se mal: cinzento sobre cinzento-escuro fica abaixo do mínimo de 4.5:1 que
+# a WCAG pede para texto normal.
+#
+# O passo ACTIVO é a informação mais importante do ecrã — "onde estou nesta
+# instalação" — por isso ganha fundo próprio e texto quase branco, em vez de ser
+# distinguido só pela cor da letra.
 style:
-    sidebarBackground:    "#16191e"
-    sidebarText:          "#e6e8ec"
-    sidebarTextSelect:    "#b03a44"
-    sidebarTextHighlight: "#1f242b"
+    sidebarBackground:    "#14171c"
+    sidebarText:          "#c8ccd4"
+    sidebarTextSelect:    "#ffffff"
+    sidebarTextHighlight: "#7a2530"
 
 slideshow:             "show.qml"
 slideshowAPI:          2

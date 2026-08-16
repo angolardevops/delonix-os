@@ -1,0 +1,24 @@
+# DelonixOS — identidade do sistema.
+#
+# É ESTE ficheiro que dá o nome a tudo o que se lê no arranque: o
+# `systemd-firstboot` ("Welcome to Manjaro Linux!"), o /etc/issue, o fastfetch,
+# as entradas do GRUB geradas pelo os-prober, e o que o Calamares mostra.
+# Vinha do pacote `manjaro-release`; substituímo-lo aqui.
+#
+# `ID_LIKE=arch` e `ID=delonixos` de propósito: as ferramentas de terceiros que
+# perguntam "que distro é esta?" continuam a reconhecer a família Arch, e quem
+# quiser distinguir o DelonixOS tem o ID próprio.
+NAME="DelonixOS"
+PRETTY_NAME="DelonixOS 1.0 (Acacia)"
+ID=delonixos
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;176;58;68"
+HOME_URL="https://github.com/angolardevops/delonix-os"
+DOCUMENTATION_URL="https://github.com/angolardevops/delonix-os/tree/main/docs"
+SUPPORT_URL="https://github.com/angolardevops/delonix-os/issues"
+BUG_REPORT_URL="https://github.com/angolardevops/delonix-os/issues"
+PRIVACY_POLICY_URL="https://github.com/angolardevops/delonix-os"
+LOGO=delonix
+VERSION_ID=1.0
+VERSION_CODENAME=acacia

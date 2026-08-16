@@ -1,3 +1,7 @@
+# NOTA sobre o wallpaper: `Image=Delonix` é um NOME, que o Plasma resolve
+# procurando nas pastas de wallpapers. Essa resolução falha em silêncio quando o
+# tema ainda não foi indexado — e o fundo aparece umas vezes sim, outras não.
+# Caminho ABSOLUTO não depende de indexação nenhuma.
 [kdeglobals][General]
 ColorScheme=DelonixDark
 AccentColor=224,32,47
@@ -42,10 +46,10 @@ Engine=KSplashQML
 Theme=org.delonix.desktop
 
 [kscreenlockerrc][Greeter][Wallpaper][org.kde.image][General]
-Image=Delonix
+Image=/usr/share/wallpapers/Delonix/contents/images/1920x1080.png
 
 [Wallpaper]
-Image=Delonix
+Image=/usr/share/wallpapers/Delonix/contents/images/1920x1080.png
 
 [plasma-org.kde.plasma.desktop-appletsrc][Containments][1][Wallpaper][org.kde.image][General]
-Image=Delonix
+Image=/usr/share/wallpapers/Delonix/contents/images/1920x1080.png
