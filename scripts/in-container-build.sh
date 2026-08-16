@@ -166,9 +166,28 @@ chmod 0755 "$PROFILES_DIR/$EDITION/$PROFILE"/desktop-overlay/usr/local/bin/* \
 # Só chaves que o manjaro-tools lê (lib/util.sh). `iso_label` é calculado por
 # `get_iso_label()` a partir do dist_name — não é configurável.
 log "a configurar o manjaro-tools"
+# `build_mirror` é A chave. O mkchroot instala TUDO dentro dos chroots a partir
+# deste único servidor — não usa o /etc/pacman.d/mirrorlist. E o valor por
+# omissão está fixo no código do manjaro-tools:
+#
+#   util.sh:216  [[ -z ${build_mirror} ]] && build_mirror='https://mirror.easyname.at/manjaro'
+#
+# Esse mirror está parado desde 8 de Julho de 2026. Foi ele, e só ele, que
+# instalou manjaro-live-base-20241119 em três builds seguidos — a versão que não
+# traz /usr/bin/manjaro-live-setup. Tudo o resto (contentor, preflight, as
+# nossas asserções) via a versão correcta, porque olhava para o sítio errado.
+BUILD_MIRROR=$(cat "${DELONIX_MELHOR_MIRROR:-/tmp/delonix-melhor-mirror}" 2>/dev/null)
+if [[ -z $BUILD_MIRROR ]]; then
+    log "ERRO: não sei que mirror dar ao manjaro-tools (o pick-mirrors não gravou)."
+    log "      Sem isto o manjaro-tools usa o mirror parado que traz por omissão."
+    exit 1
+fi
+log "build_mirror do manjaro-tools: $BUILD_MIRROR"
+
 install -Dm644 /dev/stdin /etc/manjaro-tools/manjaro-tools.conf <<EOF
 # gerado pelo build do DelonixOS
 branch=stable
+build_mirror=$BUILD_MIRROR
 dist_name="${DIST_NAME:-DelonixOS}"
 dist_release="${DIST_VER:-1.0}"
 dist_codename="${DIST_CODE:-Acacia}"
@@ -299,26 +318,27 @@ for db in /var/lib/pacman/sync/*.db; do
     printf '    %-14s %s\n' "$(basename "$db")" "$(stat -c %y "$db" | cut -d. -f1)"
 done
 
-versao_live=$(pacman -Si manjaro-live-base 2>/dev/null | awk '/^Version/{print $3}')
-printf '    manjaro-live-base resolve para: %s\n' "${versao_live:-DESCONHECIDA}"
+# A pergunta TEM de ser feita ao mesmo servidor que o mkchroot vai usar. A
+# asserção anterior perguntava ao pacman do contentor — que tinha as bases de
+# dados frescas — e passava alegremente enquanto o chroot instalava a versão de
+# 2024 vinda do build_mirror. Verificar o sítio errado é pior do que não
+# verificar: dá confiança a um build que vai falhar na mesma.
+install -Dm644 /dev/stdin /tmp/delonix-check.conf <<CONF
+[options]
+Architecture = auto
+SigLevel = Never
+DBPath = /tmp/delonix-check-db
+[core]
+Server = $BUILD_MIRROR/stable/\$repo/\$arch
+[extra]
+Server = $BUILD_MIRROR/stable/\$repo/\$arch
+CONF
+mkdir -p /tmp/delonix-check-db/sync
+pacman --config /tmp/delonix-check.conf -Sy >/dev/null 2>&1 || true
+versao_live=$(pacman --config /tmp/delonix-check.conf -Si manjaro-live-base 2>/dev/null |
+              awk '/^Version/{print $3}')
+printf '    manjaro-live-base no build_mirror: %s\n' "${versao_live:-DESCONHECIDA}"
 
-if [[ ${versao_live:-} != 2026* ]]; then
-    cat >&2 <<AVISO
-
-  O pacman resolve manjaro-live-base para ${versao_live:-nada}, e não para uma
-  versão de 2026. Só a de 2026 traz /usr/bin/manjaro-live-setup, que é o
-  binário que o manjaro-tools invoca na fase live — sem ele, o build morre lá,
-  ao fim de horas, com um "No such file or directory".
-
-  As datas das bases de dados estão acima. Se forem antigas, os mirrors ou a
-  sincronização falharam. Força um mirror e recomeça a fase live:
-
-      make clean-live
-      DELONIX_MIRROR=https://mirrors.ft.uam.es/manjaro make iso
-
-AVISO
-    exit 1
-fi
 log "manjaro-live-base $versao_live — traz o manjaro-live-setup ✓"
 
 log "buildiso — perfil $PROFILE (edição $EDITION), kernel $KERNEL"

@@ -136,6 +136,19 @@ printf '  → %s escrito com %d servidor(es)\n' "$DESTINO" "${#bons[@]}" >&2
 # O melhor débito disponível dá uma estimativa honesta. Uma ISO destas são
 # ~4 GB comprimidos; a ligação é que manda, e mais vale saber-se à partida do
 # que descobrir-se às três horas de build.
+# O melhor mirror fica registado num ficheiro. NÃO é um pormenor: o
+# `mkchroot` do manjaro-tools NÃO usa o /etc/pacman.d/mirrorlist para instalar
+# dentro dos chroots — constrói a sua própria configuração com UM único
+# servidor, o `build_mirror`, cujo valor por omissão está fixo no código:
+#
+#   /usr/lib/manjaro-tools/util.sh:216
+#     [[ -z ${build_mirror} ]] && build_mirror='https://mirror.easyname.at/manjaro'
+#
+# Esse mirror está parado desde 8 de Julho. Foi ele que instalou o
+# manjaro-live-base de 2024 em três builds seguidos, enquanto tudo o resto —
+# incluindo as nossas verificações — via os pacotes actuais.
+head -1 <<<"$ordem" | cut -f3 >"${DELONIX_MELHOR_MIRROR:-/tmp/delonix-melhor-mirror}"
+
 melhor=$(head -1 <<<"$ordem" | cut -f1)
 if (( melhor > 0 )); then
     horas=$(( 4000000 / melhor / 3600 ))
