@@ -116,6 +116,30 @@ done < <(find "$REPO_DIR/packaging" -name PKGBUILD -print0)
 # e depois cospe um erro do bash em cima de quem o usa. Foi assim que duas
 # mensagens do delonix-doctor iam partir — uma delas só numa sessão Wayland sem
 # wl-clipboard, ou seja, no ramo que ninguém testa.
+# O instalador não abriu em TRÊS ISOs seguidas, sempre pela mesma razão e nunca
+# detectada antes do arranque: o Calamares exige que
+#   settings.conf `branding:`  ==  nome da pasta  ==  `componentName:` interno
+# e qualquer divergência dá um "Cowardly refusing to continue startup without
+# branding" que só se vê a correr o binário à mão no live.
+echo "== marca do Calamares (o instalador não abre se isto divergir) =="
+LIVE="$PROFILE/live-overlay/usr/share/calamares/branding"
+iso_nome=$(grep -oP '^iso_name\s*=\s*"?\K[^"]+' "$PROFILE/profile.conf" 2>/dev/null)
+iso_nome=${iso_nome:-delonixos}
+comp="$LIVE/$iso_nome"
+if [[ ! -f $comp/branding.desc ]]; then
+    bad "sem $comp/branding.desc — o Calamares recusa arrancar"
+else
+    interno=$(grep -oP '^\s*componentName\s*:\s*\K\S+' "$comp/branding.desc")
+    if [[ $interno == "$iso_nome" ]]; then
+        ok "componente '$iso_nome' com componentName coerente"
+    else
+        bad "componentName='$interno' mas a pasta é '$iso_nome' — o Calamares recusa"
+    fi
+    for img in $(grep -oP '^\s+product\w+:\s*"\K[^"]+' "$comp/branding.desc"); do
+        [[ -f $comp/$img ]] && ok "  imagem: $img" || bad "  imagem em falta: $img"
+    done
+fi
+
 echo "== crases dentro de aspas (o bash -n não as vê) =="
 crases=0
 while IFS= read -r -d '' f; do

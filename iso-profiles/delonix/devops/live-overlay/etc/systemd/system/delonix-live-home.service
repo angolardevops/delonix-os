@@ -1,0 +1,25 @@
+[Unit]
+# O home do utilizador live não fica gravável, e o sintoma aparece em tudo o que
+# escreve na pasta pessoal:
+#
+#   mkdir: cannot create directory '/home/delonix/.local/state': Permission denied
+#   warning: /home/delonix/.cache/calamares is not writable
+#
+# Na imagem, o /home/delonix está com 1000:1000 — logo o problema nasce em
+# execução, na camada de escrita do live. Em vez de continuar a deduzir de onde
+# vem, corrige-se antes de haver sessão: é barato, é idempotente, e não esconde
+# nada (o estado fica no journal).
+Description=DelonixOS — garantir que o home do utilizador live é gravável
+DefaultDependencies=no
+After=local-fs.target
+Before=display-manager.service sddm.service
+ConditionPathExists=/home/delonix
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/install -d -o delonix -g delonix -m 0700 /home/delonix/.local/share /home/delonix/.local/state /home/delonix/.cache /home/delonix/.config
+ExecStart=/usr/bin/chown -R delonix:delonix /home/delonix
+
+[Install]
+WantedBy=multi-user.target
