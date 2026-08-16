@@ -82,7 +82,7 @@ fi
 
 # O chroot do buildiso ocupa ~15 GB; guardá-lo fora do contentor torna os
 # rebuilds incrementais (e evita encher a storage do podman/docker).
-mkdir -p "$OUT_DIR" "$CACHE_DIR"/{pkg,chroots,aur,repo}
+mkdir -p "$OUT_DIR" "$CACHE_DIR"/{pkg,chroots,aur,repo,iso-profiles}
 
 echo "→ a preparar o payload da marca (tema + PNG gerados)"
 "$REPO_DIR/scripts/stage-branding.sh" >/dev/null
@@ -143,6 +143,7 @@ echo "→ a construir com $ENGINE (imagem: $IMAGE, kernel: $KERNEL)"
     -v "$CACHE_DIR/chroots:/var/lib/manjaro-tools:z" \
     -v "$CACHE_DIR/aur:/var/cache/delonix-aur:z" \
     -v "$CACHE_DIR/repo:/var/cache/delonix-repo:z" \
+    -v "$CACHE_DIR/iso-profiles:/var/cache/delonix-iso-profiles:z" \
     -w /work \
     -e DELONIX_KERNEL="$KERNEL" \
     -e DELONIX_SKIP_AUR="${DELONIX_SKIP_AUR:-0}" \

@@ -67,11 +67,66 @@ pacman -Su --noconfirm --needed \
 bash "$SCRIPTS/sync-pacman.sh" --so-config
 
 # --- 2. iso-profiles oficial (para o `shared/`) -------------------------------
-if [[ ! -d $PROFILES_DIR/.git ]]; then
-    log "a clonar o iso-profiles oficial"
-    rm -rf "$PROFILES_DIR"
-    git clone --depth 1 "$UPSTREAM" "$PROFILES_DIR"
+# Só precisamos do `shared/` do upstream — mas ele vive num repositório git, e o
+# GitLab da Manjaro tem avarias:
+#
+#   remote: GitLab is not responding
+#   fatal: unable to access '...': The requested URL returned error: 502
+#
+# Antes, isso matava o build inteiro, porque o clone era refeito TODAS as vezes:
+# o /usr/share/manjaro-tools vive dentro do contentor e desaparece com ele.
+# Agora o clone é guardado na cache do host e reaproveitado — uma avaria do
+# GitLab passa a ser um aviso, não uma paragem.
+CACHE_PROFILES=/var/cache/delonix-iso-profiles
+
+obter_profiles() {
+    if [[ -d $CACHE_PROFILES/.git ]]; then
+        log "iso-profiles em cache — a tentar actualizar"
+        # Falhar a actualizar não é grave: a cópia que temos serve.
+        # `FETCH_HEAD` e não `origin/HEAD`: num clone raso (--depth 1) o
+        # HEAD remoto não é criado, e o reset falharia sempre em silêncio.
+        if git -C "$CACHE_PROFILES" fetch --depth 1 origin HEAD 2>/dev/null &&
+           git -C "$CACHE_PROFILES" reset --hard FETCH_HEAD 2>/dev/null; then
+            log "  actualizado"
+        else
+            log "  sem resposta do GitLab; a usar a cópia em cache"
+        fi
+        return 0
+    fi
+
+    local tentativa
+    for tentativa in 1 2 3; do
+        log "a clonar o iso-profiles (tentativa $tentativa/3)"
+        rm -rf "$CACHE_PROFILES"
+        # SEM pipe: `git clone ... | tail` devolveria o estado do `tail`, que é
+        # sempre 0, e a primeira tentativa passaria por boa mesmo tendo falhado.
+        if git clone --depth 1 "$UPSTREAM" "$CACHE_PROFILES"; then
+            [[ -d $CACHE_PROFILES/.git ]] && return 0
+        fi
+        sleep $(( tentativa * 10 ))
+    done
+    return 1
+}
+
+if ! obter_profiles; then
+    cat >&2 <<'AVISO'
+
+  Não consegui obter o iso-profiles da Manjaro, e não há cópia em cache.
+
+  Precisamos dele só pelo directório `shared/`. Se o GitLab estiver em baixo
+  (acontece), espera e tenta outra vez — a partir daí fica em cache e uma
+  avaria deles deixa de te parar.
+
+  Estado do serviço: https://status.manjaro.org
+
+AVISO
+    exit 1
 fi
+
+# O manjaro-tools espera os perfis no seu próprio directório.
+rm -rf "$PROFILES_DIR"
+mkdir -p "$PROFILES_DIR"
+rsync -a --exclude '.git' "$CACHE_PROFILES/" "$PROFILES_DIR/"
 
 # --- 3. injectar o perfil ------------------------------------------------------
 # Há dois casos: o perfil oficial do repositório, ou um perfil gerado pelo
