@@ -9,7 +9,7 @@ ficam em português, que é onde o raciocínio foi escrito.
 | Comando | Uma linha |
 |---|---|
 | [`delonix-doctor`](#delonix-doctor) | esta máquina está mesmo pronta? |
-| [`delonix-toolbox`](delonix-toolbox.md) | instalar extras, ligar bases de dados, correr laboratórios |
+| [`delonix-toolbox`](delonix-toolbox.md) | instalar extras, ligar bases de dados, correr laboratórios, **acrescentar kernels** |
 | [`delonix update`](delonix-toolbox.md#update--sistema-e-motor-num-comando) | actualizar o sistema e o Delonix Runtime |
 | [`delonix-load`](#delonix-load) | correr trabalho pesado sem perder a máquina |
 | [`delonix-tune`](#delonix-tune) | afinar a máquina ao hardware que ela tem mesmo |

@@ -176,3 +176,49 @@ por um serviço de sistema. Por isso não vem ligado.
 - [`delonix-doctor`](ferramentas-por-perfil.md) — diagnóstico da máquina
   (rootless, cgroups, KVM/NPU, I/O, rede, laboratórios a correr)
 - [`delonixos`](cli.md) — construir a ISO, ou a tua própria distro
+
+## `add kernel` — outro kernel, com os drivers atrás
+
+```bash
+delonix-toolbox add kernel --list              # o que existe
+delonix-toolbox add kernel --version 7.2       # instala, com os extramódulos
+delonix-toolbox add kernel --version 7.3 --compile
+```
+
+Um comando: instala a versão pedida, traz os módulos que o teu kernel actual
+tem — NVIDIA incluído — e acrescenta uma entrada nova no arranque. **Não
+substitui o kernel em uso**; se o novo correr mal, reinicias e escolhes o
+antigo no menu do GRUB.
+
+### Porque é que isto não compila sempre
+
+Compilar um kernel para o hardware da máquina soa melhor do que é. Os
+repositórios trazem 6.6, 6.12, 6.18, 7.1 e 7.2 já compilados, assinados, com
+actualizações de segurança automáticas e — o que mais custa a reproduzir — com
+os **extramódulos** a acompanhar: `nvidia`, `nvidia-open`, `r8168`, `vhba`,
+`virtualbox-host-modules`, um conjunto por versão.
+
+Um kernel compilado à mão perde tudo isso. Os módulos proprietários passam a
+depender do DKMS, que os reconstrói a cada actualização e falha quando o
+fabricante ainda não suporta a versão. Numa máquina de trabalho, isso é ficar
+sem ambiente gráfico numa segunda-feira de manhã.
+
+Por isso a ordem é: **se existir pacote, instala-se o pacote**. Compila-se
+quando não existe — uma versão upstream mais recente, ou um kernel com
+patches — e aí o `delonix-kernel` faz o trabalho com `localmodconfig`, que gera
+uma configuração só com os módulos que *esta* máquina tem carregados. É a
+optimização que conta: corta o tempo de compilação para uma fracção e dá um
+initramfs muito menor.
+
+O `--compile` força a compilação mesmo havendo pacote, para quem sabe porquê —
+e avisa do que está a trocar antes de começar.
+
+### A NVIDIA, nos dois caminhos
+
+| Caminho | Como o módulo é construído |
+|---|---|
+| Pacote (`--version 7.2`) | `linux72-nvidia`, já compilado e testado com esse kernel |
+| Compilado (`--compile`) | `nvidia-dkms`, reconstruído a cada actualização |
+
+Nos dois casos o comando detecta se há mesmo uma GPU NVIDIA antes de instalar
+seja o que for.

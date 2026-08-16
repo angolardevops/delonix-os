@@ -9,7 +9,7 @@ Portuguese, which is where the reasoning was written.
 | Command | One line |
 |---|---|
 | [`delonix-doctor`](#delonix-doctor) | is this machine actually ready? |
-| [`delonix-toolbox`](delonix-toolbox.md) | install extras, start databases, run labs |
+| [`delonix-toolbox`](delonix-toolbox.md) | install extras, start databases, run labs, **add kernels** |
 | [`delonix update`](delonix-toolbox.md#update--system-and-engine-in-one-command) | update the system and the Delonix Runtime |
 | [`delonix-load`](#delonix-load) | run heavy work without losing the machine |
 | [`delonix-tune`](#delonix-tune) | tune this machine to the hardware it is actually on |

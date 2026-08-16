@@ -175,3 +175,49 @@ not ship enabled.
 - [`delonix-doctor`](tools-by-profile.md) — machine diagnosis (rootless,
   cgroups, KVM/NPU, I/O, network, running labs)
 - [`delonixos`](cli.md) — build the ISO, or your own distro
+
+## `add kernel` — another kernel, drivers included
+
+```bash
+delonix-toolbox add kernel --list              # what exists
+delonix-toolbox add kernel --version 7.2       # install, extramodules included
+delonix-toolbox add kernel --version 7.3 --compile
+```
+
+One command: installs the requested version, brings along the modules your
+current kernel has — NVIDIA included — and adds a new boot entry. It **does not
+replace the running kernel**; if the new one misbehaves, reboot and pick the old
+one from the GRUB menu.
+
+### Why this does not always compile
+
+Compiling a kernel for the machine's hardware sounds better than it is. The
+repositories carry 6.6, 6.12, 6.18, 7.1 and 7.2 already built, signed, with
+automatic security updates and — the part that is hardest to reproduce — with
+the **extramodules** alongside: `nvidia`, `nvidia-open`, `r8168`, `vhba`,
+`virtualbox-host-modules`, one set per kernel version.
+
+A hand-built kernel loses all of that. Proprietary modules fall to DKMS, which
+rebuilds them on every update and fails when the vendor does not support the
+version yet. On a working machine that means no graphical session on a Monday
+morning.
+
+So the order is: **if a package exists, install the package.** Compile when one
+does not — a newer upstream version, or a patched kernel — and then
+`delonix-kernel` does the work with `localmodconfig`, which generates a config
+containing only the modules *this* machine has loaded. That is the optimisation
+that matters: it cuts build time to a fraction and yields a much smaller
+initramfs.
+
+`--compile` forces compilation even when a package exists, for those who know
+why — and it says what you are trading before it starts.
+
+### NVIDIA, on both paths
+
+| Path | How the module is built |
+|---|---|
+| Package (`--version 7.2`) | `linux72-nvidia`, prebuilt and tested against that kernel |
+| Compiled (`--compile`) | `nvidia-dkms`, rebuilt on every update |
+
+Either way, the command checks there is an actual NVIDIA GPU before installing
+anything.

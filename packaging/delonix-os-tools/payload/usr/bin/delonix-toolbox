@@ -8,6 +8,8 @@
 #   delonix-toolbox lab up observability            (Grafana+Prometheus+Loki)
 #   delonix-toolbox eyecandy on|off                 (desktop animations)
 #   delonix-toolbox unprivileged-ports on|off
+#   delonix-toolbox add kernel --version 7.2        (kernel + drivers, um comando)
+#   delonix-toolbox add kernel --list
 #   delonix update                                  (system + Delonix Runtime)
 #
 # The ISO ships what 90% of people use. What lives here are the specific cases —
@@ -15,7 +17,7 @@
 # were deliberately left open.
 set -euo pipefail
 
-RED=$'\e[31m'; GRN=$'\e[32m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
+RED=$'\e[31m'; GRN=$'\e[32m'; YLW=$'\e[33m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
 
 # --- catálogo: perfil -> descrição | pacotes ---------------------------------
 declare -A DESC=(
@@ -78,6 +80,7 @@ declare -A PKGS=(
 die()  { printf '%s✗%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
 info() { printf '%s→%s %s\n' "$BLD" "$RST" "$*"; }
 done_() { printf '%s✓%s %s\n' "$GRN" "$RST" "$*"; }
+warn() { printf '%s!%s %s\n' "$YLW" "$RST" "$*"; }
 
 helper() {
     if command -v yay >/dev/null; then echo yay
@@ -529,6 +532,165 @@ ok_versoes() {
     done
 }
 
+# --- kernels -------------------------------------------------------------------
+#
+#   delonix-toolbox add kernel --version 7.2
+#   delonix-toolbox add kernel --version 6.18 --compile
+#   delonix-toolbox add kernel --list
+#
+# PORQUE É QUE ISTO NÃO COMPILA SEMPRE
+#
+# Compilar um kernel para o hardware da máquina soa melhor do que é. Os
+# repositórios da Manjaro trazem 6.6, 6.12, 6.18, 7.1 e 7.2 já compilados,
+# assinados, com actualizações de segurança automáticas E — o que mais custa a
+# reproduzir — com os EXTRAMÓDULOS a acompanhar: nvidia, nvidia-open, r8168,
+# vhba, virtualbox-host-modules, um conjunto por versão de kernel.
+#
+# Um kernel compilado à mão perde tudo isso: os módulos proprietários passam a
+# depender do DKMS, que os reconstrói a cada actualização e falha quando o
+# fabricante ainda não suporta a versão. Numa máquina de trabalho, isso é ficar
+# sem ambiente gráfico numa segunda-feira de manhã.
+#
+# Por isso a ordem é: se existir pacote, instala-se o pacote. Compila-se quando
+# NÃO existe — uma versão upstream mais recente, ou um kernel com patches —, e
+# aí o `delonix-kernel` trata do trabalho, com `localmodconfig` para gerar uma
+# configuração só com os módulos que ESTA máquina usa.
+#
+# `--compile` força a compilação mesmo havendo pacote, para quem sabe porquê.
+
+# 7.2 → linux72 · 6.12 → linux612 · 7.2.0 → linux72
+_kernel_pkg() {
+    local v=${1#v}
+    v=${v%%-*}
+    local maior menor
+    maior=${v%%.*}
+    menor=$(cut -d. -f2 <<<"$v")
+    [[ $maior =~ ^[0-9]+$ && $menor =~ ^[0-9]+$ ]] ||
+        die "versão que não percebo: '$1' (usa 7.2, 6.12, 6.18…)"
+    printf 'linux%s%s' "$maior" "$menor"
+}
+
+_kernel_listar() {
+    printf '\n%sKernels nos repositórios%s\n\n' "$BLD" "$RST"
+    local actual; actual=$(uname -r)
+    while read -r nome versao; do
+        local marca="  "
+        pacman -Qq "$nome" &>/dev/null && marca=" ✓"
+        printf '  %s %-10s %-12s %s\n' "$marca" "$nome" "$versao" \
+            "$( [[ $versao == "${actual%%-*}"* ]] && printf '%s(em uso)%s' "$DIM" "$RST" )"
+    done < <(pacman -Ss '^linux[0-9]+$' 2>/dev/null |
+             awk '/^(core|extra)\//{split($1,a,"/"); print a[2], $2}' | sort -V -k2)
+    printf '\n  %s✓ = instalado. Instalar:  delonix-toolbox add kernel --version 7.2%s\n\n' \
+        "$DIM" "$RST"
+}
+
+_kernel_nvidia_presente() {
+    lspci 2>/dev/null | grep -qi 'nvidia.*\(vga\|3d controller\)'
+}
+
+_kernel_instalar_pacote() {
+    local pkg=$1
+    info "kernel $pkg encontrado nos repositórios — sem compilar"
+
+    # O `mhwd-kernel -i` é o caminho certo: instala o kernel E replica os
+    # extramódulos que o kernel EM USO tem. É assim que o nvidia vai atrás sem
+    # ninguém ter de saber o nome do pacote.
+    if command -v mhwd-kernel >/dev/null; then
+        info "a instalar com o mhwd-kernel (traz os extramódulos do kernel actual)"
+        sudo mhwd-kernel -i "$pkg" || die "o mhwd-kernel falhou"
+    else
+        # Sem o mhwd, replicamos à mão: para cada linuxACTUAL-<mod> instalado,
+        # instalamos o linuxNOVO-<mod> equivalente.
+        local actual extras=()
+        actual=$(pacman -Qq | grep -oE '^linux[0-9]+$' | head -1)
+        if [[ -n $actual ]]; then
+            while read -r m; do
+                extras+=("${pkg}-${m#"$actual"-}")
+            done < <(pacman -Qq | grep -E "^${actual}-" || true)
+        fi
+        info "a instalar: $pkg ${extras[*]:-}"
+        sudo pacman -S --needed --noconfirm "$pkg" "${extras[@]}" ||
+            die "a instalação falhou"
+    fi
+
+    if _kernel_nvidia_presente; then
+        if pacman -Qq "${pkg}-nvidia" &>/dev/null || pacman -Qq "${pkg}-nvidia-open" &>/dev/null; then
+            done_ "módulos NVIDIA para $pkg instalados"
+        else
+            warn "há uma GPU NVIDIA mas o módulo não entrou — a instalar"
+            sudo pacman -S --needed --noconfirm "${pkg}-nvidia" 2>/dev/null ||
+                warn "sem ${pkg}-nvidia; experimenta ${pkg}-nvidia-open"
+        fi
+    fi
+
+    printf '\n'
+    done_ "$pkg instalado. O GRUB já tem a entrada nova."
+    info "Reinicia e escolhe-o no menu. O kernel actual continua lá — nada foi substituído."
+}
+
+_kernel_compilar() {
+    local versao=$1
+    command -v delonix-kernel >/dev/null ||
+        die "preciso do delonix-kernel (pacote delonix-os-tools)"
+
+    printf '\n'
+    warn "vais COMPILAR o kernel $versao. Lê isto antes:"
+    warn "  · demora entre 20 minutos e mais de uma hora, conforme a máquina;"
+    warn "  · os módulos proprietários passam a depender do DKMS, que os"
+    warn "    reconstrói a cada actualização — e falha quando o fabricante"
+    warn "    ainda não suporta a versão;"
+    warn "  · não recebe as actualizações de segurança dos repositórios."
+    printf '\n'
+    read -rp "  Continuar? [s/N] " r
+    [[ ${r,,} == s ]] || { info "cancelado"; return 0; }
+
+    # `localmodconfig` é a optimização que interessa mesmo: gera uma
+    # configuração só com os módulos que ESTA máquina tem carregados. Corta o
+    # tempo de compilação para uma fracção e dá um initramfs muito menor.
+    info "a preparar a configuração para ESTE hardware (localmodconfig)"
+    delonix-kernel setup
+    delonix-kernel config --local || die "a configuração falhou"
+
+    info "a compilar e instalar (entrada de arranque nova, sem substituir a actual)"
+    delonix-kernel build --install || die "a compilação falhou"
+
+    if _kernel_nvidia_presente; then
+        info "GPU NVIDIA detectada — a instalar o nvidia-dkms"
+        info "  (num kernel compilado à mão é o DKMS que constrói o módulo)"
+        sudo pacman -S --needed --noconfirm nvidia-dkms nvidia-utils ||
+            warn "o nvidia-dkms falhou — pode ainda não suportar o $versao"
+    fi
+    done_ "kernel $versao compilado e instalado"
+}
+
+cmd_add() {
+    [[ ${1:-} == kernel ]] || die "só sei 'add kernel' por agora"
+    shift
+    local versao="" compilar=0
+    while (( $# )); do
+        case $1 in
+            --version|-v) versao=${2:-}; shift 2 ;;
+            --compile)    compilar=1; shift ;;
+            --list|-l)    _kernel_listar; return 0 ;;
+            *) die "opção desconhecida: $1" ;;
+        esac
+    done
+    [[ -n $versao ]] || die "falta --version (ou --list para ver as disponíveis)"
+
+    local pkg; pkg=$(_kernel_pkg "$versao")
+
+    if (( compilar )); then
+        _kernel_compilar "$versao"
+    elif pacman -Si "$pkg" &>/dev/null; then
+        _kernel_instalar_pacote "$pkg"
+    else
+        warn "não há pacote '$pkg' nos repositórios para a versão $versao"
+        info "as disponíveis:  delonix-toolbox add kernel --list"
+        info "para compilar a partir do código:  --compile"
+        _kernel_compilar "$versao"
+    fi
+}
+
 cmd_unprivileged_ports() {
     local state=${1:-}
     case $state in
@@ -550,7 +712,13 @@ cmd_unprivileged_ports() {
 
 case ${1:-help} in
     list)                shift; cmd_list "$@" ;;
-    install|add)         shift; cmd_install "$@" ;;
+    install)             shift; cmd_install "$@" ;;
+    # `add` já era sinónimo de `install`, e continua a ser — excepto quando o
+    # que se acrescenta é um KERNEL, que não é um perfil de pacotes mas uma
+    # operação com regras próprias (extramódulos, arranque, DKMS).
+    add)                 shift
+                         if [[ ${1:-} == kernel ]]; then cmd_add "$@"
+                         else cmd_install "$@"; fi ;;
     remove|rm)           shift; cmd_remove "$@" ;;
     db)                  shift; cmd_db "$@" ;;
     lab)                 shift; cmd_lab "$@" ;;
