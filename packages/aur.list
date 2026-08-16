@@ -13,13 +13,16 @@ grpcurl                                  # curl para gRPC
 cloud-hypervisor                         # VMM leve para microVMs
 google-cloud-cli                         # gcloud (~1 GB descomprimido)
 google-cloud-cli-gke-gcloud-auth-plugin  # auth do GKE para o kubectl
-claude-code                              # Claude Code CLI
-antigravity                              # IDE Antigravity
-google-chrome                            # browser (repackaging do .deb oficial)
-microsoft-edge-stable-bin                # browser (idem)
 mongodb-bin                              # servidor MongoDB (licença SSPL: fora dos repos)
 mongosh-bin                              # shell do MongoDB
 mongodb-tools                            # mongodump/mongorestore/mongoimport
 kind-bin                                 # k8s local; o `kind` ainda não está na Manjaro stable
-intel-npu-driver-bin                     # NPU dos Core Ultra; idem
 ngrok                                    # túnel com inspecção de pedidos em :4040 (exige conta)
+
+
+# SAÍRAM da imagem a 2026-08-16 — passam a instalar-se a pedido, e o
+# `delonix-toolbox` trata do AUR sozinho. Poupa ~1 GB na ISO e cerca de vinte
+# minutos de compilação em CADA build:
+#   delonix-toolbox install browsers       google-chrome, microsoft-edge-stable-bin
+#   delonix-toolbox install ai             claude-code, antigravity
+#   delonix-toolbox install intel-compute  intel-npu-driver-bin

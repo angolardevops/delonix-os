@@ -205,6 +205,19 @@ apply() {
         fi
     fi
 
+    # The Intel compute stack (OpenCL, Level Zero, NPU) is ~400 MB that does
+    # NOTHING on AMD. It stopped shipping in the image for that reason, and is
+    # installed here instead — once, on the machines where it applies.
+    # Uma condição, sem misturar && com || — essa precedência é uma armadilha.
+    if [[ $VENDOR == intel ]] && ! pacman -Qq intel-compute-runtime &>/dev/null; then
+        if command -v delonix-toolbox >/dev/null; then
+            info "CPU Intel: a instalar o stack de compute (~400 MB, uma vez)"
+            as_root delonix-toolbox install intel-compute 2>/dev/null &&
+                ok "OpenCL/Level Zero/NPU da Intel instalados" ||
+                warn "não consegui instalar — delonix-toolbox install intel-compute"
+        fi
+    fi
+
     # thermald only where it does something.
     if [[ $VENDOR == intel ]]; then
         as_root systemctl enable --now thermald 2>/dev/null &&

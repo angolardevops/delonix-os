@@ -63,8 +63,9 @@ gwenview
 kcalc
 partitionmanager
 firefox                 # consolas cloud, Grafana, ArgoCD UI
-google-chrome           # [aur] o que as consolas de cloud assumem que usas
-microsoft-edge-stable-bin  # [aur] Entra ID/Intune e portais que só ele abre
+# Chrome e Edge saíram: 750 MB para dois browsers além do Firefox, que fica.
+#   delonix-toolbox install browsers
+
 profile-sync-daemon     # perfis dos browsers em tmpfs: menos I/O, menos desgaste
 keepassxc               # cofre local (não substitui Vault/SOPS)
 remmina                 # RDP/VNC para janelas de manutenção
@@ -189,11 +190,13 @@ helm
 k9s
 kustomize
 stern
-argocd
-cilium-cli
+
+
 etcd                    # etcdctl para diagnóstico do control plane
 cfssl
-eksctl
+# eksctl, argocd, cilium-cli e openbao (750 MB somados) servem quem os usa
+# mesmo, não quem instala a distro:
+#   delonix-toolbox install cloud-k8s-extra
 
 ##############################################################################
 # 7b. CLIs de cloud — pedidos para estarem prontos a usar
@@ -238,7 +241,11 @@ opentofu
 tflint                  # erros de HCL que o `plan` só descobre no fim
 open-policy-agent       # política como código: valida o QUE o manifesto diz,
                         # não só se é YAML válido (o kubeconform faz o schema)
-ansible
+# `ansible` (524 MB) → `ansible-core` (~40 MB). O metapacote traz TODAS as
+# colecções oficiais; quem usa Ansible instala as duas ou três de que precisa
+# com `ansible-galaxy collection install`. Todas de uma vez:
+#   delonix-toolbox install ansible-full
+ansible-core
 ansible-lint
 packer
 yamllint
@@ -281,7 +288,7 @@ oha                     # carga HTTP (substitui o wrk, que saiu dos repos)
 # 10. Segurança / segredos / supply chain
 ##############################################################################
 age
-openbao                 # cliente de segredos dinâmicos (fork aberto do Vault)
+
 gitleaks                # segredos commitados: apanha antes de irem para o remoto
 syft                    # SBOM de imagens e de código — exigido em auditorias
 # `osv-scanner` fora (79 MB): o `trivy fs .` lê os mesmos lockfiles e a mesma
@@ -385,13 +392,15 @@ sqlite
 # o que activar é o `delonix-tune`, na máquina, no primeiro arranque.
 
 ## Intel
-intel-compute-runtime   # OpenCL/Level Zero em Intel (provides opencl-driver)
+# O stack de compute da Intel (~400 MB) não faz NADA num AMD. Sai da imagem: o
+# `delonix-tune` instala-o no primeiro arranque SE o hardware for Intel.
+#   delonix-toolbox install intel-compute
 intel-media-driver      # VA-API: vídeo descodificado na GPU, não na CPU
-intel-npu-driver-bin    # [aur] NPU dos Core Ultra — inferência local sem GPU.
+
                         # Também ainda não está na Manjaro stable; quando chegar,
                         # troca-se pelo pacote do repositório.
 intel-gpu-tools
-level-zero-loader
+
 
 ## AMD
 # NOTA: `libva-mesa-driver` e `mesa-vdpau` NÃO se listam — foram absorvidos pelo
@@ -539,8 +548,9 @@ cmake
 ninja
 meson
 yay                     # [aur/manjaro] acesso ao AUR
-claude-code             # [aur] Claude Code CLI
-antigravity             # [aur] IDE Antigravity
+# Claude Code e Antigravity saem da imagem (260 MB) — um comando traz os dois:
+#   delonix-toolbox install ai
+
 
 ##############################################################################
 # 13. Fontes (necessárias para os prompts com ícones e para logs)
