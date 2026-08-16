@@ -249,6 +249,29 @@ else
     exit 1
 fi
 
+# --- marca do Calamares --------------------------------------------------------
+# ESTE é o motivo de o instalador não abrir.
+#
+# O manjaro-tools escreve `branding: ${iso_name}` no settings.conf do Calamares,
+# mas o componente de marca continua a chamar-se `manjaro` — que é o nome do
+# pacote que o instala. Com iso_name=manjaro os dois coincidem; com o nosso
+# `delonixos`, o Calamares procura um componente que não existe e recusa
+# arrancar, sem dizer porquê a quem carrega no ícone.
+#
+# Confirmado na ISO construída:
+#   settings.conf                          branding: delonixos
+#   /usr/share/calamares/branding/          manjaro          ← só este
+#
+# O conteúdo já vem traduzido pelo `configure_branding` (productName: DelonixOS
+# Linux); o que falta é a pasta ter o nome que o settings.conf procura.
+MARCA_CALAMARES="$PROFILES_DIR/$EDITION/$PROFILE/live-overlay/usr/share/calamares/branding/${ISO_NAME}"
+install -d "$MARCA_CALAMARES"
+cat >"$MARCA_CALAMARES/.delonix-placeholder" <<'PH'
+Esta pasta é preenchida durante o build a partir do componente `manjaro` do
+Calamares, já com os textos do DelonixOS. Ver in-container-build.sh.
+PH
+log "marca do Calamares: componente ${ISO_NAME}"
+
 log "a configurar o manjaro-tools"
 # `build_mirror` é A chave. O mkchroot instala TUDO dentro dos chroots a partir
 # deste único servidor — não usa o /etc/pacman.d/mirrorlist. E o valor por
@@ -355,6 +378,18 @@ else
         #
         # Bastam as bases de dados: os pacotes que a mhwd instala vêm todos do
         # core/extra. São umas centenas de KB, não os 1,2 GB do AUR.
+        # A marca do Calamares: copiar o componente `manjaro` (que o
+        # configure_branding já reescreveu com os nossos textos) para o nome
+        # que o settings.conf procura. Sem isto o instalador não abre.
+        if [[ $fs == livefs ]]; then
+            marca_orig="$CHROOT_BASE/$fs/usr/share/calamares/branding/manjaro"
+            marca_nova="$CHROOT_BASE/$fs/usr/share/calamares/branding/${ISO_NAME}"
+            if [[ -d $marca_orig && ! -d $marca_nova ]]; then
+                cp -a "$marca_orig" "$marca_nova"
+                log "  livefs: marca do Calamares ${ISO_NAME} criada"
+            fi
+        fi
+
         # O tema do GRUB do live tem de existir DENTRO do livefs, e essa fase
         # já pode estar marcada como concluída — o `copy_overlay` não volta a
         # correr. Injectamo-lo aqui para não obrigar a refazer a fase inteira.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+# O pacote manjaro-rescue traz este lançador com o nome da Manjaro.
+Type=Application
+Name=Recuperação do DelonixOS
+Name[en]=DelonixOS Rescue
+Comment=Reparar uma instalação existente
+Comment[en]=Repair an existing installation
+Exec=manjaro-rescue
+Icon=utilities-terminal
+Terminal=true
+Categories=System;

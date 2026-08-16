@@ -1,0 +1,18 @@
+[Desktop Entry]
+# Substitui o do pacote `calamares`, que diz "Install Manjaro Linux".
+# É a primeira coisa que se vê no ambiente de trabalho do live.
+Type=Application
+Version=1.0
+Name=Instalar o DelonixOS
+Name[en]=Install DelonixOS
+Name[pt]=Instalar o DelonixOS
+GenericName=Instalador do sistema
+GenericName[en]=System Installer
+Comment=Instalar o DelonixOS neste computador
+Comment[en]=Install DelonixOS on this computer
+Exec=/usr/bin/calamares_polkit %f
+Icon=calamares
+Terminal=false
+StartupNotify=true
+Categories=Qt;System;
+Keywords=installer;live;delonix;instalar;
