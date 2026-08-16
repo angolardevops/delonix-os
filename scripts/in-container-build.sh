@@ -248,13 +248,38 @@ if [[ -z $CHROOT_BASE ]]; then
 else
     log "a propagar os mirrors para os chroots em $CHROOT_BASE"
     encontrados=0
-    for fs in rootfs desktopfs livefs; do
+    # `mhwdfs` também: é a fase que corre o pacman DENTRO do chroot.
+    for fs in rootfs desktopfs livefs mhwdfs; do
         [[ -d $CHROOT_BASE/$fs ]] || continue
         install -Dm644 /etc/pacman.d/mirrorlist "$CHROOT_BASE/$fs/etc/pacman.d/mirrorlist"
         # As dbs já descarregadas do mirror atrasado TÊM de sair: o pacman
         # considera-as actuais e nunca chega a usar os mirrors novos. A data
         # delas é a do servidor, por isso dá para ver de onde vieram.
         rm -f "$CHROOT_BASE/$fs"/var/lib/pacman/sync/{core,extra,multilib}.db
+
+        # Os repositórios locais TÊM de ser alcançáveis de DENTRO do chroot.
+        #
+        # A fase mhwd é a única que corre o pacman lá dentro:
+        #
+        #   copy_from_cache(){ chroot-run ... "$1" pacman -v -Syw $2 ... }
+        #
+        # As outras usam `basestrap --root`, que corre ao nível do contentor —
+        # e por isso o `file:///var/cache/delonix-aur` resolvia bem. Na mhwd não:
+        #
+        #   error: failed retrieving file 'delonix-aur.db' from disk :
+        #          Could not open file /var/cache/delonix-aur/delonix-aur.db
+        #
+        # Bastam as bases de dados: os pacotes que a mhwd instala vêm todos do
+        # core/extra. São umas centenas de KB, não os 1,2 GB do AUR.
+        for repo in delonix-aur delonix-repo; do
+            origem=/var/cache/$repo
+            [[ -d $origem ]] || continue
+            destino="$CHROOT_BASE/$fs/var/cache/$repo"
+            install -d "$destino"
+            # `-L` resolve os links que o repo-add cria (foo.db → foo.db.tar.gz):
+            # um link para fora do chroot não vale nada lá dentro.
+            cp -Lf "$origem"/*.db "$origem"/*.files "$destino"/ 2>/dev/null || true
+        done
         # `((encontrados++))` NÃO serve aqui: o pós-incremento devolve o valor
         # ANTIGO, e um 0 é estado de saída 1 — com `set -e`, o script morre na
         # primeira iteração. Foi assim que este bloco, já a correr no caminho
