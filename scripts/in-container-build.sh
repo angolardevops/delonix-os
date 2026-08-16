@@ -249,29 +249,6 @@ else
     exit 1
 fi
 
-# --- marca do Calamares --------------------------------------------------------
-# ESTE é o motivo de o instalador não abrir.
-#
-# O manjaro-tools escreve `branding: ${iso_name}` no settings.conf do Calamares,
-# mas o componente de marca continua a chamar-se `manjaro` — que é o nome do
-# pacote que o instala. Com iso_name=manjaro os dois coincidem; com o nosso
-# `delonixos`, o Calamares procura um componente que não existe e recusa
-# arrancar, sem dizer porquê a quem carrega no ícone.
-#
-# Confirmado na ISO construída:
-#   settings.conf                          branding: delonixos
-#   /usr/share/calamares/branding/          manjaro          ← só este
-#
-# O conteúdo já vem traduzido pelo `configure_branding` (productName: DelonixOS
-# Linux); o que falta é a pasta ter o nome que o settings.conf procura.
-MARCA_CALAMARES="$PROFILES_DIR/$EDITION/$PROFILE/live-overlay/usr/share/calamares/branding/${ISO_NAME}"
-install -d "$MARCA_CALAMARES"
-cat >"$MARCA_CALAMARES/.delonix-placeholder" <<'PH'
-Esta pasta é preenchida durante o build a partir do componente `manjaro` do
-Calamares, já com os textos do DelonixOS. Ver in-container-build.sh.
-PH
-log "marca do Calamares: componente ${ISO_NAME}"
-
 log "a configurar o manjaro-tools"
 # `build_mirror` é A chave. O mkchroot instala TUDO dentro dos chroots a partir
 # deste único servidor — não usa o /etc/pacman.d/mirrorlist. E o valor por
@@ -382,11 +359,27 @@ else
         # configure_branding já reescreveu com os nossos textos) para o nome
         # que o settings.conf procura. Sem isto o instalador não abre.
         if [[ $fs == livefs ]]; then
+            # O Calamares exige DUAS coisas que ninguém documenta junto:
+            #   1. a pasta do componente tem de se chamar como o `branding:` do
+            #      settings.conf (que o manjaro-tools escreve como ${iso_name});
+            #   2. o `componentName:` DENTRO do branding.desc tem de ser igual ao
+            #      nome da pasta. Se divergirem, o Calamares não carrega e o
+            #      ícone do ambiente de trabalho não faz nada.
+            #
+            # Na primeira tentativa isto falhou por minha causa: deixei uma
+            # pasta-marcador vazia no live-overlay e a condição de cópia era
+            # `! -d destino`. A pasta já existia, a cópia nunca aconteceu, e o
+            # instalador continuou sem abrir. Agora a condição é o CONTEÚDO.
             marca_orig="$CHROOT_BASE/$fs/usr/share/calamares/branding/manjaro"
             marca_nova="$CHROOT_BASE/$fs/usr/share/calamares/branding/${ISO_NAME}"
-            if [[ -d $marca_orig && ! -d $marca_nova ]]; then
+            if [[ -f $marca_orig/branding.desc ]]; then
+                rm -rf "$marca_nova"
                 cp -a "$marca_orig" "$marca_nova"
-                log "  livefs: marca do Calamares ${ISO_NAME} criada"
+                sed -i "s|^\(\s*componentName\s*:\s*\).*|\1${ISO_NAME}|" \
+                    "$marca_nova/branding.desc"
+                log "  livefs: marca ${ISO_NAME} (componentName: $(grep -oP '^\s*componentName\s*:\s*\K\S+' "$marca_nova/branding.desc"))"
+            else
+                log "  AVISO: sem $marca_orig — o instalador não vai abrir"
             fi
         fi
 

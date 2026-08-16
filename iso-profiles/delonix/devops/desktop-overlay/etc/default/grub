@@ -28,7 +28,11 @@ GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1 amd_pstate=active intel_p
 
 GRUB_PRELOAD_MODULES="part_gpt part_msdos"
 GRUB_TERMINAL_INPUT=console
-GRUB_GFXMODE=auto
+# `auto` deixa o GRUB escolher, e ele escolhe muitas vezes 640x480 ou 800x600
+# esticado — é daí que vem o texto desfocado do menu. Pedimos uma resolução
+# nativa comum e deixamos alternativas por ordem; o GRUB usa a primeira que o
+# firmware suportar.
+GRUB_GFXMODE=1920x1080x32,1600x900x32,1366x768x32,1280x720x32,auto
 GRUB_GFXPAYLOAD_LINUX=keep
 GRUB_THEME="/usr/share/grub/themes/delonix/theme.txt"
 GRUB_DISABLE_RECOVERY=false
