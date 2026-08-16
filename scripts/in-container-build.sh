@@ -165,6 +165,35 @@ chmod 0755 "$PROFILES_DIR/$EDITION/$PROFILE"/desktop-overlay/usr/local/bin/* \
 # --- 6. configuração do manjaro-tools -----------------------------------------
 # Só chaves que o manjaro-tools lê (lib/util.sh). `iso_label` é calculado por
 # `get_iso_label()` a partir do dist_name — não é configurável.
+ISO_NAME=$(echo "${DIST_NAME:-delonixos}" | tr 'A-Z ' 'a-z-')
+
+# --- tema do GRUB do live ------------------------------------------------------
+# O `prepare_grub` do manjaro-tools copia o tema do menu de arranque do live por
+# um caminho que depende do nome da ISO:
+#
+#   util-iso-boot.sh:39   cp -r ${data_live}/themes/${iso_name}-live ${grub}/themes/
+#
+# O pacote `grub-theme-live-manjaro` instala `manjaro-live`, e o nosso iso_name é
+# `delonixos` — daí, na montagem final:
+#
+#   cp: cannot stat '.../livefs/usr/share/grub/themes/delonixos-live'
+#
+# Geramos o tema com o nome certo a partir da marca Delonix. Fica no
+# live-overlay, que é copiado para o livefs pelo `copy_overlay` — e o nome é
+# calculado, não escrito à mão, para continuar a funcionar quando o `delonixos
+# render` gera uma distro com outro nome.
+TEMA_LIVE="$PROFILES_DIR/$EDITION/$PROFILE/live-overlay/usr/share/grub/themes/${ISO_NAME}-live"
+TEMA_ORIGEM="$WORK/build/branding/usr/share/grub/themes/delonix"
+if [[ -d $TEMA_ORIGEM ]]; then
+    log "tema do GRUB do live: ${ISO_NAME}-live"
+    install -d "$TEMA_LIVE"
+    cp -a "$TEMA_ORIGEM"/. "$TEMA_LIVE"/
+else
+    log "ERRO: não encontrei o tema da marca em $TEMA_ORIGEM"
+    log "      corre 'make branding' antes de construir"
+    exit 1
+fi
+
 log "a configurar o manjaro-tools"
 # `build_mirror` é A chave. O mkchroot instala TUDO dentro dos chroots a partir
 # deste único servidor — não usa o /etc/pacman.d/mirrorlist. E o valor por
@@ -192,7 +221,7 @@ dist_name="${DIST_NAME:-DelonixOS}"
 dist_release="${DIST_VER:-1.0}"
 dist_codename="${DIST_CODE:-Acacia}"
 dist_branding="DELONIX"
-iso_name="$(echo "${DIST_NAME:-delonixos}" | tr 'A-Z ' 'a-z-')"
+iso_name="$ISO_NAME"
 iso_compression=zstd
 kernel="$KERNEL"
 EOF
@@ -271,6 +300,26 @@ else
         #
         # Bastam as bases de dados: os pacotes que a mhwd instala vêm todos do
         # core/extra. São umas centenas de KB, não os 1,2 GB do AUR.
+        # O tema do GRUB do live tem de existir DENTRO do livefs, e essa fase
+        # já pode estar marcada como concluída — o `copy_overlay` não volta a
+        # correr. Injectamo-lo aqui para não obrigar a refazer a fase inteira.
+        if [[ $fs == livefs && -d $TEMA_ORIGEM ]]; then
+            destino_tema="$CHROOT_BASE/$fs/usr/share/grub/themes/${ISO_NAME}-live"
+            install -d "$destino_tema"
+            cp -a "$TEMA_ORIGEM"/. "$destino_tema"/
+            # O nosso theme.txt pede fontes por nome ("DejaVu Sans Bold 20") e o
+            # GRUB só as encontra se os .pf2 estiverem na pasta do tema. O
+            # `grub-theme-live-manjaro`, que já vem no Packages-Live, traz-nas —
+            # reaproveitamo-las em vez de as gerar. Sem isto o menu do live
+            # arranca na mesma, mas com a fonte de recurso.
+            tema_manjaro="$CHROOT_BASE/$fs/usr/share/grub/themes/manjaro-live"
+            if compgen -G "$tema_manjaro/*.pf2" >/dev/null; then
+                cp -n "$tema_manjaro"/*.pf2 "$destino_tema"/ 2>/dev/null || true
+                log "  livefs: fontes .pf2 reaproveitadas do tema da Manjaro"
+            fi
+            log "  livefs: tema ${ISO_NAME}-live instalado"
+        fi
+
         for repo in delonix-aur delonix-repo; do
             origem=/var/cache/$repo
             [[ -d $origem ]] || continue
