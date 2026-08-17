@@ -542,11 +542,35 @@ invalidar_fases() {
         if [[ -n $mais_novo ]]; then
             log "  $fase: ${mais_novo#$pdir/} mudou → vai repetir"
             rm -f "$marcador"
-            # A fase `live` guarda pacotes instalados no seu overlay; se ficarem,
-            # o pacman considera-os satisfeitos e o novo conteúdo não entra.
-            [[ $fase == make_image_live ]] && rm -rf "$base/livefs" "$base/livefs.lock"
+            # Apagar SÓ o marcador não chega, e isso custou outro build.
+            #
+            # O `mkchroot` salta a instalação de pacotes quando encontra o
+            # `<fs>.lock`. Com o marcador removido mas o lock e o directório no
+            # sítio, a fase "repete-se" sem instalar nada — e fica lá o sistema
+            # de ficheiros ANTIGO. O sintoma apareceu na fase seguinte:
+            #
+            #   installing protobuf (35.1-1) breaks dependency 'protobuf=35.0'
+            #     required by python-protobuf
+            #
+            # O repositório estava consistente (ambos 35.1); o 35.0 estava
+            # instalado no rootfs velho que eu julgava ter mandado refazer.
+            #
+            # Uma fase invalidada tem de perder o sistema de ficheiros e o lock.
+            # Custa tempo — o rootfs são horas — mas o contrário custa um build
+            # inteiro para descobrir um conflito que não existe no repositório.
+            # rootfs, desktopfs, livefs, mhwdfs, bootfs — o sufixo `fs` faz
+            # parte do nome. Sem ele isto procurava um `root/` que não existe e
+            # não apagava nada, que é como não ter feito a verificação.
+            local fs_dir=""
+            [[ $fase == make_image_* ]] && fs_dir="${fase#make_image_}fs"
+            if [[ -n $fs_dir && -d $base/$fs_dir ]]; then
+                log "    a apagar $fs_dir/ e o lock (senão o mkchroot salta a instalação)"
+                rm -rf "$base/$fs_dir" "$base/$fs_dir.lock"
+            fi
         fi
     done
+    # Estado de saída explícito: nada do que fica acima deve poder decidi-lo.
+    return 0
 }
 
 if [[ -n ${CHROOT_BASE:-} && -d ${CHROOT_BASE:-} ]]; then
