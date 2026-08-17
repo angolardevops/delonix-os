@@ -22,7 +22,7 @@ KERNEL     ?= linux612
 # `**` só funciona com globstar ligado.
 ISO         = $(shell find $(OUT_DIR) -name '*.iso' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 
-.PHONY: all branding preview packages verify check preflight iso shell test qemu-cmd cli-test distro-test clean help clean-live lint
+.PHONY: all branding preview packages verify check preflight iso shell test qemu-cmd cli-test distro-test clean help clean-live lint clean-boot clean-desktop
 
 all: verify
 
@@ -48,6 +48,36 @@ verify:
 # A fase `live` do buildiso guarda um marcador; se ela falhou a meio, o chroot
 # fica num estado que o build seguinte reaproveita — incluindo o que estava mal.
 # Isto apaga SÓ essa fase (a `root` e a `desktop`, que demoram horas, ficam).
+# QUE FASE É QUE A MINHA ALTERAÇÃO TOCA
+#
+# O buildiso guarda um marcador por fase e salta as que já estão feitas — é isso
+# que torna as tentativas rápidas. O preço: uma alteração só chega à ISO se a
+# fase respectiva voltar a correr. Isto custou-nos vários testes a imagens que
+# não continham as correcções.
+#
+# O `make iso` já detecta isto sozinho (invalidar_fases no in-container-build.sh
+# compara datas). Estes alvos ficam para forçar à mão:
+#
+#   Packages-Root, root-overlay/        → clean-root      (horas)
+#   Packages-Desktop, desktop-overlay/  → clean-desktop   (a mais demorada)
+#   packaging/*/payload                 → clean-desktop
+#   Packages-Live, live-overlay/        → clean-live      (rápida)
+#   profile.conf (custom_boot_args)     → clean-boot
+#   tema do GRUB                        → clean-boot
+CHROOTS = $(REPO_DIR)/.cache/chroots/buildiso/devops/x86_64
+
+clean-boot:
+	@echo "→ a apagar as fases de arranque (entradas do GRUB e initramfs)"
+	@sudo rm -rf $(CHROOTS)/build.make_grub $(CHROOTS)/build.make_image_boot \
+	             $(CHROOTS)/bootfs $(CHROOTS)/efiboot $(CHROOTS)/iso
+	@echo "→ feito; o cmdline e o tema do GRUB voltam a ser gerados"
+
+clean-desktop:
+	@echo "→ a apagar a fase desktop (a mais demorada depois da root)"
+	@sudo rm -rf $(CHROOTS)/desktopfs $(CHROOTS)/desktopfs.lock \
+	             $(CHROOTS)/build.make_image_desktop
+	@$(MAKE) --no-print-directory clean-live clean-boot
+
 clean-live:
 	@echo "→ a apagar a fase live do chroot (root e desktop mantêm-se)"
 	@sudo rm -rf $(REPO_DIR)/.cache/chroots/buildiso/devops/x86_64/livefs \

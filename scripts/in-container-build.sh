@@ -498,6 +498,62 @@ printf '    manjaro-live-base no build_mirror: %s\n' "${versao_live:-DESCONHECID
 
 log "manjaro-live-base $versao_live — traz o manjaro-live-setup ✓"
 
+# --- invalidação de fases por dependência --------------------------------------
+# ISTO é o que faltava, e explica quase todas as "correcções que não
+# funcionaram" desta semana.
+#
+# O buildiso guarda um marcador por fase e SALTA as que já estão feitas. Nós
+# construímos com `-c` para não pagar horas por tentativa — logo uma alteração
+# ao desktop-overlay, ao Packages-Desktop ou ao cmdline NÃO chega à imagem
+# enquanto a fase respectiva não voltar a correr. O sintoma é o pior possível:
+# a correcção está no repositório, o build passa, e a ISO sai igual.
+#
+# Aconteceu com o os-release (fase desktop), com o systemd.firstboot=off (fase
+# grub) e com o tema do GRUB (idem) — três vezes eu a dizer "corre make
+# clean-live" quando o que mudara vivia noutra fase.
+#
+# A solução não é lembrar-me: é o build comparar datas, como o make faz. Cada
+# fase declara de que ficheiros depende; se algum for mais recente que o
+# marcador, o marcador cai e a fase repete-se.
+invalidar_fases() {
+    local base=$1 pdir="$PROFILES_DIR/$EDITION/$PROFILE"
+
+    # fase → ficheiros/directórios de que depende
+    local -A deps=(
+        [make_image_root]="$pdir/Packages-Root $pdir/root-overlay"
+        # `$WORK/packaging` e não `$DELONIX_REPO`: o repositório é reconstruído em
+        # TODOS os builds, logo seria sempre mais recente e a fase desktop —
+        # que é a caríssima — repetia-se sempre. A fonte só muda quando alguém
+        # a edita.
+        [make_image_desktop]="$pdir/Packages-Desktop $pdir/desktop-overlay $WORK/packaging"
+        [make_image_live]="$pdir/Packages-Live $pdir/live-overlay"
+        [make_image_mhwd]="$pdir/Packages-Mhwd"
+        [make_grub]="$pdir/profile.conf $pdir/desktop-overlay/etc/default/grub"
+        [make_image_boot]="$pdir/profile.conf"
+    )
+
+    local fase marcador mais_novo
+    for fase in "${!deps[@]}"; do
+        marcador="$base/build.$fase"
+        [[ -f $marcador ]] || continue
+
+        # O ficheiro mais recente de entre as dependências desta fase.
+        mais_novo=$(find ${deps[$fase]} -newer "$marcador" -print -quit 2>/dev/null)
+        if [[ -n $mais_novo ]]; then
+            log "  $fase: ${mais_novo#$pdir/} mudou → vai repetir"
+            rm -f "$marcador"
+            # A fase `live` guarda pacotes instalados no seu overlay; se ficarem,
+            # o pacman considera-os satisfeitos e o novo conteúdo não entra.
+            [[ $fase == make_image_live ]] && rm -rf "$base/livefs" "$base/livefs.lock"
+        fi
+    done
+}
+
+if [[ -n ${CHROOT_BASE:-} && -d ${CHROOT_BASE:-} ]]; then
+    log "a verificar que fases ficaram desactualizadas"
+    invalidar_fases "$CHROOT_BASE"
+fi
+
 log "buildiso — perfil $PROFILE (edição $EDITION), kernel $KERNEL"
 buildiso "${BUILD_ARGS[@]}"
 
