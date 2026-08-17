@@ -535,7 +535,30 @@ invalidar_fases() {
     local fase marcador mais_novo
     for fase in "${!deps[@]}"; do
         marcador="$base/build.$fase"
-        [[ -f $marcador ]] || continue
+        local fs_dir=""
+        [[ $fase == make_image_* ]] && fs_dir="${fase#make_image_}fs"
+
+        # UMA FASE SEM MARCADOR MAS COM SISTEMA DE FICHEIROS É UMA FASE QUE
+        # FALHOU. E era aqui que eu fazia `continue`, deixando-a intacta.
+        #
+        # Foi isso que fechou um ciclo vicioso: a fase desktop falhou a meio, o
+        # marcador nunca foi criado, o desktopfs ficou com protobuf 35.0 metade
+        # instalado — e em CADA tentativa seguinte o meu código saltava-a por
+        # não ter marcador. O mkchroot via o `.lock`, saltava a instalação, e o
+        # pacman tentava actualizar por cima:
+        #
+        #   installing protobuf (35.1-1) breaks dependency 'protobuf=35.0'
+        #
+        # Duas tentativas minhas a culpar o repositório e o rootfs, quando o
+        # estado envenenado estava à minha frente e a minha própria verificação
+        # o protegia.
+        if [[ ! -f $marcador ]]; then
+            if [[ -n $fs_dir && -d $base/$fs_dir ]]; then
+                log "  $fase: ficou a meio numa tentativa anterior → a limpar $fs_dir/"
+                rm -rf "$base/$fs_dir" "$base/$fs_dir.lock"
+            fi
+            continue
+        fi
 
         # O ficheiro mais recente de entre as dependências desta fase.
         mais_novo=$(find ${deps[$fase]} -newer "$marcador" -print -quit 2>/dev/null)
@@ -558,11 +581,8 @@ invalidar_fases() {
             # Uma fase invalidada tem de perder o sistema de ficheiros e o lock.
             # Custa tempo — o rootfs são horas — mas o contrário custa um build
             # inteiro para descobrir um conflito que não existe no repositório.
-            # rootfs, desktopfs, livefs, mhwdfs, bootfs — o sufixo `fs` faz
-            # parte do nome. Sem ele isto procurava um `root/` que não existe e
-            # não apagava nada, que é como não ter feito a verificação.
-            local fs_dir=""
-            [[ $fase == make_image_* ]] && fs_dir="${fase#make_image_}fs"
+            # `fs_dir` já foi calculado acima — rootfs, desktopfs, livefs,
+            # mhwdfs, bootfs; o sufixo `fs` faz parte do nome.
             if [[ -n $fs_dir && -d $base/$fs_dir ]]; then
                 log "    a apagar $fs_dir/ e o lock (senão o mkchroot salta a instalação)"
                 rm -rf "$base/$fs_dir" "$base/$fs_dir.lock"
