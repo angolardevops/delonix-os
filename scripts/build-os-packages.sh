@@ -18,7 +18,25 @@ set -euo pipefail
 REPO_DIR=${DELONIX_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 OUT_REPO=${1:-/var/cache/delonix-repo}
 REPO_NAME=delonix
-VER=$(tr -d '[:space:]' <"$REPO_DIR/VERSION")
+# A VERSÃO É O GAP MAIS GRAVE QUE ESTA REVISÃO ENCONTROU
+#
+# O `VERSION` diz 1.0.0 e o pkgrel é 1, fixos. Consequência: numa máquina JÁ
+# INSTALADA, o `pacman -Syu` nunca vê nada mais recente e o branding, a afinação
+# e as ferramentas ficam congelados na versão que veio na ISO.
+#
+# Isso anula a razão pela qual empacotámos estas coisas. Está escrito no próprio
+# Packages-Desktop: «é a diferença entre uma ISO que envelhece e uma distro que
+# recebe actualizações». Com versão fixa, é a ISO que envelhece.
+#
+# A versão passa a ser derivada do git: 1.0.0.r<nº de commits>.g<hash>. Cada
+# commit produz uma versão estritamente maior, que é o que o pacman compara. Sem
+# git (um tarball descarregado), cai na data — também monótona.
+VER_BASE=$(tr -d '[:space:]' <"$REPO_DIR/VERSION")
+if git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null; then
+    VER="${VER_BASE}.r$(git -C "$REPO_DIR" rev-list --count HEAD).g$(git -C "$REPO_DIR" rev-parse --short HEAD)"
+else
+    VER="${VER_BASE}.$(date -u +%Y%m%d%H%M)"
+fi
 BUILDER=${DELONIX_BUILDER:-builder}
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT

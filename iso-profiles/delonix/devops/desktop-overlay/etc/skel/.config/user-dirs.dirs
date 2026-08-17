@@ -1,0 +1,20 @@
+# DelonixOS — pastas do utilizador.
+#
+# BUG que isto corrige: o skel trazia uma pasta `Vídeos` criada à mão e o
+# `xdg-user-dirs-update` criava `Videos` no primeiro login. Resultado, no `ls`:
+#
+#   Desktop  Documents  Downloads  Music  Pictures  Projects  Public
+#   Templates  Videos  Vídeos          ← as duas
+#
+# Com este ficheiro há UMA fonte de verdade, e o xdg-user-dirs respeita-a em vez
+# de inventar. Nomes em inglês de propósito: são caminhos que aparecem em
+# scripts, em configurações de aplicações e em documentação — e um caminho com
+# acento é uma fonte de problemas que não paga o que dá.
+XDG_DESKTOP_DIR="$HOME/Desktop"
+XDG_DOWNLOAD_DIR="$HOME/Downloads"
+XDG_TEMPLATES_DIR="$HOME/Templates"
+XDG_PUBLICSHARE_DIR="$HOME/Public"
+XDG_DOCUMENTS_DIR="$HOME/Documents"
+XDG_MUSIC_DIR="$HOME/Music"
+XDG_PICTURES_DIR="$HOME/Pictures"
+XDG_VIDEOS_DIR="$HOME/Videos"

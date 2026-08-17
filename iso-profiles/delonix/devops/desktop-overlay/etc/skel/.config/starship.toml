@@ -1,3 +1,7 @@
+# PALETA: o vermelho da marca (#e0202f) NÃO se usa aqui. Um prompt está no ecrã
+# em permanência, e uma cor a 100% de saturação ao lado do cursor cansa em
+# minutos. Usam-se os tons de interface: #b03a44 para o símbolo, #d6848a para
+# texto de destaque. O vermelho vivo fica para o logótipo.
 # DelonixOS — prompt.
 # Mostra o que faz falta a quem opera infra: onde estou, em que contexto k8s,
 # em que conta cloud, em que branch, e se o último comando falhou.
@@ -17,9 +21,9 @@ $character"""
 add_newline = true
 
 [character]
-success_symbol = "[❯](bold #e0202f)"
+success_symbol = "[❯](bold #b03a44)"
 error_symbol = "[❯](bold #e84a4a)"
-vimcmd_symbol = "[❮](bold #e0202f)"
+vimcmd_symbol = "[❮](bold #b03a44)"
 
 [directory]
 style = "bold #e6e8ec"
@@ -40,7 +44,7 @@ format = "([$all_status$ahead_behind]($style)) "
 disabled = false
 symbol = "☸ "
 format = '[$symbol$context( \($namespace\))]($style) '
-style = "bold #e0202f"
+style = "bold #d6848a"
 # Avisa a vermelho carregado quando o contexto cheira a produção.
 [[kubernetes.contexts]]
 context_pattern = ".*(prod|prd|production).*"
@@ -77,4 +81,4 @@ style = "#8b9099"
 [hostname]
 ssh_only = true
 format = "[$hostname]($style) "
-style = "bold #e0202f"
+style = "bold #d6848a"

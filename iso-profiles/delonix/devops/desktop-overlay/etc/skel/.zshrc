@@ -206,11 +206,25 @@ kclean() {
 command -v starship >/dev/null && eval "$(starship init zsh)"
 command -v zoxide   >/dev/null && eval "$(zoxide init zsh --cmd cd)"
 command -v direnv   >/dev/null && eval "$(direnv hook zsh)"
-command -v atuin    >/dev/null && eval "$(atuin init zsh --disable-up-arrow)"
+# O atuin escreve em ~/.local/share e ~/.local/state. Se não existirem — ou se
+# não forem graváveis, como acontece na sessão live — ele despeja um erro de
+# Rust com backtrace em CADA shell nova:
+#
+#   Error: could not load client settings
+#   Caused by: failed to create directory `~/.local/share/atuin`
+#
+# Criar as pastas antes resolve o caso normal; o `2>/dev/null` resolve o caso em
+# que o home é mesmo só de leitura. Um histórico que não carrega não é motivo
+# para encher o ecrã de quem só quer um terminal.
+if command -v atuin >/dev/null; then
+    mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}" \
+             "${XDG_STATE_HOME:-$HOME/.local/state}" 2>/dev/null
+    eval "$(atuin init zsh --disable-up-arrow 2>/dev/null)" 2>/dev/null || true
+fi
 [[ -r /usr/share/fzf/key-bindings.zsh ]] && source /usr/share/fzf/key-bindings.zsh
 [[ -r /usr/share/fzf/completion.zsh   ]] && source /usr/share/fzf/completion.zsh
 export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
-export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --color=fg+:#e6e8ec,hl:#e0202f,hl+:#e0202f,pointer:#e0202f,marker:#e0202f'
+export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --color=fg+:#f0ecec,bg+:#4a2228,hl:#d6848a,hl+:#e88a8e,pointer:#b03a44,marker:#46b278,border:#262a31'
 
 ## --- completações de CLIs pesadas (geradas em cache) -------------------------
 _delonix_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh-completions"
