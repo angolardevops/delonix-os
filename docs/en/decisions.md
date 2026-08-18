@@ -104,7 +104,7 @@ repository and signing it.
 
 ## 9. AUR compiled during the build, not installed afterwards
 
-Chrome, Edge, MongoDB, `gcloud`, Antigravity and `cloud-hypervisor`
+Chrome, Edge, MongoDB, `gcloud`, `claude-code`, Antigravity and `cloud-hypervisor`
 only exist in the AUR, and the `pacman` used by `buildiso` does not know what the
 AUR is. Rather than leaving installation for after first boot, the build compiles
 them into a local `[delonix-aur]` repository.
