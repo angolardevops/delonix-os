@@ -40,11 +40,30 @@ dependência da distribuição.
 ## Estado
 
 - [x] Decisão de base tomada e justificada
-- [ ] `Packages` mapeado (444 nomes)
+- [x] **Preflight** (`make preflight-debian`) — resolve a transação a seco
+- [x] `Packages` inicial: 132 nomes, transação resolve com 1629 pacotes
+- [ ] `Packages` completo (faltam as ferramentas que só existem como binário)
 - [ ] `scripts/build-debian.sh` com live-build
 - [ ] Pacotes `.deb` para branding/settings/tools
 - [ ] Calamares para a família Debian
-- [ ] Preflight equivalente (`apt-get --simulate`)
+
+### O preflight veio primeiro, de propósito
+
+Na edição Manjaro só o escrevi depois de perder quatro builds. Aqui foi a
+primeira coisa — e valeu logo à primeira execução, com dois nomes errados
+apanhados em dois minutos em vez de quarenta:
+
+```
+✗ não existe no Ubuntu 24.04: dive        → é binário do GitHub, vai para o toolbox
+✗ não existe no Ubuntu 24.04: spectacle   → em apt chama-se kde-spectacle
+```
+
+Depois de corrigidos: **132 pacotes → 1629 com dependências, sem conflitos.**
+
+### A regra desta edição
+
+Nenhum nome entra nesta lista sem passar pelo preflight. É barato e é o que
+distingue uma lista que parece certa de uma que resolve.
 
 O `preflight` é o que mais falta e o que mais vale: a lição desta semana foi que
 resolver a transação a seco, antes de construir, poupa horas. Em apt isso é

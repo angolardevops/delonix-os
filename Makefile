@@ -121,3 +121,7 @@ distro-test:
 clean:
 	@rm -rf $(OUT_DIR) .cache build
 	@echo "limpo."
+
+# Edição Debian: resolve a transação apt a seco, antes de construir.
+preflight-debian:
+	@./scripts/preflight-debian.sh

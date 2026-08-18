@@ -1,0 +1,172 @@
+# DelonixOS — edição Debian/Ubuntu (base: Ubuntu 24.04 LTS "noble")
+#
+# A curadoria vem da edição Manjaro — o «porquê» de cada escolha é o mesmo, e
+# está lá escrito. O que muda são os NOMES: dos 444 pacotes explícitos da outra
+# edição, só ~35 se chamam igual em apt.
+#
+# Esta lista é o PONTO DE PARTIDA, não o fim. O `make preflight-debian` resolve-a
+# contra o Ubuntu real e diz quais não existem — é assim que ela cresce, e é a
+# lição da edição Manjaro: nunca acrescentar um nome sem o resolver a seco.
+
+## --- base do sistema ---------------------------------------------------------
+ubuntu-minimal
+linux-image-generic
+linux-headers-generic
+systemd-timesyncd
+network-manager
+zram-tools
+earlyoom
+irqbalance
+nftables
+apparmor
+tuned
+
+## --- ambiente de trabalho: KDE Plasma mínimo ---------------------------------
+# `kde-plasma-desktop` traz o essencial sem o `kde-full`, que é o equivalente
+# do grupo `plasma` que também recusámos na Manjaro.
+kde-plasma-desktop
+sddm
+plasma-nm
+plasma-pa
+plasma-systemmonitor
+plasma-firewall
+kscreen
+kinfocenter
+konsole
+dolphin
+ark
+kate
+kcalc
+okular
+gwenview
+kde-spectacle          # em apt o nome leva o prefixo `kde-`
+partitionmanager
+kde-config-gtk-style
+breeze-gtk-theme
+qt6-wayland
+xdg-desktop-portal-kde
+xdg-user-dirs
+wl-clipboard
+xclip
+
+## --- shell e terminal --------------------------------------------------------
+zsh
+zsh-autosuggestions
+zsh-syntax-highlighting
+tmux
+kitty
+fzf
+ripgrep
+fd-find                 # o binário chama-se `fdfind`; o .zshrc põe um alias
+bat                     # o binário chama-se `batcat`; idem
+eza                     # existe a partir do 24.04
+zoxide
+direnv
+jq
+htop
+btop
+iotop
+ncdu
+duf
+tldr
+pv
+moreutils
+parallel
+entr
+just
+hexyl
+neovim
+
+## --- git ---------------------------------------------------------------------
+git
+git-lfs
+git-delta
+gh                      # o github-cli chama-se `gh` em apt
+pre-commit
+gnupg
+openssh-client
+sshfs
+mosh
+sshuttle
+
+## --- containers (rootless, sem daemon) ---------------------------------------
+podman
+buildah
+skopeo
+crun
+uidmap                  # sem isto NÃO há rootless: é o newuidmap/newgidmap
+slirp4netns
+fuse-overlayfs
+docker-compose-v2
+# `dive` não existe em apt — é um binário publicado no GitHub, como o k9s, o
+# stern e o kubectx. Esses vão todos para o delonix-toolbox na edição Debian,
+# em vez de fingirmos que o apt os tem.
+
+## --- virtualização -----------------------------------------------------------
+qemu-system-x86
+qemu-utils
+libvirt-daemon-system
+libvirt-clients
+virt-manager
+ovmf
+bridge-utils
+
+## --- linguagens --------------------------------------------------------------
+build-essential
+clang
+lld
+gdb
+python3
+python3-pip
+python3-venv
+pipx
+golang-go
+rustup                  # o rustup gere o rust; melhor que o `rustc` do apt
+nodejs
+npm
+
+## --- observabilidade e desempenho do posto ----------------------------------
+linux-tools-generic     # o `perf`
+bpftrace
+sysstat
+numactl
+lm-sensors
+smartmontools
+strace
+ltrace
+
+## --- rede --------------------------------------------------------------------
+mtr-tiny
+tcpdump
+dnsutils
+nmap
+socat
+iperf3
+ethtool
+
+## --- backup e dados ----------------------------------------------------------
+restic
+rclone
+sqlite3
+postgresql-client
+redis-tools
+
+## --- segurança ---------------------------------------------------------------
+age
+shellcheck
+
+## --- instalador e live -------------------------------------------------------
+calamares
+calamares-settings-ubuntu-common
+live-boot
+live-config
+
+## --- fontes e aparência ------------------------------------------------------
+fonts-jetbrains-mono
+fonts-noto
+fonts-noto-color-emoji
+fonts-dejavu
+plymouth
+plymouth-themes
+grub-efi-amd64
+grub-pc-bin
