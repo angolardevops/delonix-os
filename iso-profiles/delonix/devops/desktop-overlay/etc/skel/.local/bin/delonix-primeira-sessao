@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Aplica a identidade Delonix na PRIMEIRA sessão de cada utilizador.
+#
+# PORQUE É PRECISO
+#
+# O `contents/defaults` de um pacote look-and-feel só é lido quando o tema é
+# APLICADO. Numa sessão nova o Plasma não passa por lá: cria a configuração dele
+# a partir do tema Breeze e ignora os nossos valores — e o ambiente de trabalho
+# aparece com fundo PRETO, que foi exactamente o que se viu no Wayland.
+#
+# Podia-se fornecer um `plasma-org.kde.plasma.desktop-appletsrc` já feito no
+# /etc/skel, mas isso fixa a estrutura do painel e parte-se com cada versão do
+# Plasma. As ferramentas `plasma-apply-*` são a interface suportada, e fazem
+# exactamente o que faríamos à mão nas Definições.
+#
+# Corre uma vez e apaga o próprio atalho: não há razão para gastar tempo em
+# todos os arranques.
+set -uo pipefail
+MARCA="${XDG_STATE_HOME:-$HOME/.local/state}/delonix-primeira-sessao.done"
+[[ -f $MARCA ]] && exit 0
+mkdir -p "$(dirname "$MARCA")"
+
+PAPEL=/usr/share/wallpapers/Delonix/contents/images
+# A resolução mais próxima do ecrã, sem depender de qual existe.
+for r in 3840x2160 2560x1440 1920x1080; do
+    [[ -f $PAPEL/$r.png ]] && IMG="$PAPEL/$r.png" && break
+done
+
+# `|| true` em tudo: se uma peça falhar, a sessão continua a funcionar. Um
+# ambiente sem o nosso fundo é um contratempo; uma sessão que não abre, não.
+command -v plasma-apply-lookandfeel >/dev/null &&
+    plasma-apply-lookandfeel --apply org.delonix.desktop 2>/dev/null || true
+[[ -n ${IMG:-} ]] && command -v plasma-apply-wallpaperimage >/dev/null &&
+    plasma-apply-wallpaperimage "$IMG" 2>/dev/null || true
+command -v plasma-apply-colorscheme >/dev/null &&
+    plasma-apply-colorscheme DelonixDark 2>/dev/null || true
+
+date -Is >"$MARCA"
+rm -f "$HOME/.config/autostart/delonix-primeira-sessao.desktop" 2>/dev/null || true

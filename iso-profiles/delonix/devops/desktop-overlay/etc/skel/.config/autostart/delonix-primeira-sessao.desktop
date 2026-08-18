@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DelonixOS — identidade da primeira sessão
+Comment=Aplica o tema, o fundo e o esquema de cores; corre uma única vez
+Exec=/bin/sh -c 'sleep 3; exec "$HOME/.local/bin/delonix-primeira-sessao"'
+Icon=preferences-desktop-theme
+X-KDE-autostart-phase=2
+NoDisplay=true
