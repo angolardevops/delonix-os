@@ -27,3 +27,7 @@ __pycache__/
 
 # dbs dos repositórios locais, escritas no overlay durante o build
 iso-profiles/*/*/desktop-overlay/var/cache/
+
+# Configuração local de ferramentas de agente (fica na máquina, não no repo).
+.claude/
+CLAUDE.md
