@@ -23,7 +23,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib-debian.sh"
 SUITE=${1:-${DELONIX_SUITE:-noble}}
 alvo_valido "$SUITE" || exit 1
 FAMILIA=$(alvo_familia "$SUITE")
-IMAGE=${DELONIX_IMAGE_DEB:-docker.io/library/$FAMILIA:$SUITE}
+APT_SUITE=$(alvo_suite "$SUITE")
+# O Zorin não publica imagem de contentor; a base é a do Ubuntu de que deriva, e
+# os repositórios dele entram por cima — que é exactamente o que o build faz.
+IMG_FAM=$FAMILIA; [[ $FAMILIA == zorin ]] && IMG_FAM=ubuntu
+IMAGE=${DELONIX_IMAGE_DEB:-docker.io/library/$IMG_FAM:$APT_SUITE}
+# As MESMAS fontes que o build vai usar. Resolver contra outra coisa é o erro
+# que na edição Manjaro deixou passar uma versão de 2024.
+REPOS_EXTRA=$(alvo_repos_extra "$SUITE" | tr '\n' ';')
 
 RED=$'\e[31m'; GRN=$'\e[32m'; YLW=$'\e[33m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
 ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$1"; }
@@ -42,6 +49,7 @@ printf '\n%sPreflight%s — %d pacotes em %s\n\n' \
 SAIDA=$(mktemp); trap 'rm -f "$SAIDA"' EXIT
 "$ENGINE" run --rm --dns=1.1.1.1 --dns=8.8.8.8 \
     -e DEBIAN_FRONTEND=noninteractive -e PACOTES="$PACOTES" \
+    -e REPOS_EXTRA="$REPOS_EXTRA" \
     "$IMAGE" bash -c '
         # `universe` traz metade das ferramentas de DevOps; sem ela metade da
         # lista parece não existir e perde-se uma tarde a procurar porquê.
@@ -52,6 +60,16 @@ SAIDA=$(mktemp); trap 'rm -f "$SAIDA"' EXIT
             /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
         sed -i "s/^Components: main$/Components: main contrib non-free non-free-firmware/" \
             /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
+        if [[ -n ${REPOS_EXTRA:-} ]]; then
+            apt-get update -qq >/dev/null 2>&1 || true
+            apt-get install -y -qq --no-install-recommends ca-certificates >/dev/null 2>&1 || true
+            IFS=";" read -ra R <<<"$REPOS_EXTRA"
+            for r in "${R[@]}"; do [[ -n $r ]] && echo "$r" >>/etc/apt/sources.list.d/alvo.list; done
+            # As chaves do Zorin não estão no contentor; `trusted=yes` serve para
+            # RESOLVER a lista, que é tudo o que o preflight faz. O build a
+            # sério verifica as assinaturas.
+            sed -i "s|^deb |deb [trusted=yes] |" /etc/apt/sources.list.d/alvo.list
+        fi
         apt-get update -qq 2>&1 | tail -3
         # `--simulate` calcula tudo e não toca em nada. `-o Debug::NoLocking`
         # evita precisar de privilégios de escrita nos ficheiros de estado.

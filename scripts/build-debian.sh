@@ -76,6 +76,15 @@ fi
 if [[ ! -f $CACHE/build.rootfs ]]; then
     log "a criar o sistema base — $(alvo_desc "$SUITE")"
     PACOTES=$(expandir_pacotes "$PERFIL/Packages" "$SUITE" | paste -sd,)
+    # Os repositórios PRÓPRIOS do alvo. O mmdebstrap aceita fontes adicionais
+    # como argumentos posicionais, e é isto que faz o `make iso zorinos`
+    # construir sobre a base do Zorin em vez de sobre um Ubuntu com outro nome.
+    EXTRA_SOURCES=""
+    while read -r linha; do
+        [[ -n $linha ]] && EXTRA_SOURCES+=" \"$linha\""
+    done < <(alvo_repos_extra "$SUITE")
+    [[ -n $EXTRA_SOURCES ]] && etapa "repositórios próprios:$(alvo_repos_extra "$SUITE" | wc -l)"
+
     # `--variant=important` dá o mínimo utilizável sem os `recommends` que
     # enchem a imagem — é o equivalente do que fizemos com o `--needed`.
     sudo mmdebstrap \
@@ -85,7 +94,7 @@ if [[ ! -f $CACHE/build.rootfs ]]; then
                         echo 'main,contrib,non-free,non-free-firmware')" \
         --include="$PACOTES" \
         --aptopt='Apt::Install-Recommends "false"' \
-        "$SUITE" "$ROOTFS" "$MIRROR"
+        "$(alvo_suite "$SUITE")" "$ROOTFS" "$MIRROR" $EXTRA_SOURCES
     sudo touch "$CACHE/build.rootfs"
 else
     etapa "rootfs já existe (--clean para refazer)"

@@ -99,8 +99,18 @@ preflight:
 
 # O preflight corre ANTES: dois minutos a resolver a transação poupam quarenta
 # a descobrir que um pacote não existe.
-iso: branding verify preflight
-	@./scripts/build.sh --kernel $(KERNEL)
+# make iso            → Manjaro (referência)
+# make iso zorinos    → Zorin OS 18, sobre a base dele
+# make iso ubuntu|debian|fedora
+#
+# Cada distro assenta na SUA base, com o gestor de pacotes dela. O despacho está
+# em scripts/build-iso.sh; não há tradução de pacotes entre famílias.
+iso: branding verify
+	@./scripts/build-iso.sh $(filter-out iso,$(MAKECMDGOALS)) --kernel $(KERNEL)
+
+# Deixa `make iso zorinos` funcionar: o segundo argumento não é um alvo real.
+zorinos ubuntu debian fedora manjaro arch zorin17 jammy bookworm trixie:
+	@:
 
 shell:
 	@./scripts/build.sh --shell

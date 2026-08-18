@@ -98,8 +98,26 @@ make preflight-debian ALVO=bookworm   # Debian 12
 | `bookworm` | debian | Debian 12 |
 | `trixie` | debian | Debian 13 |
 
-O Zorin não é um alvo porque **não tem repositórios de base próprios**: é Ubuntu
-por baixo, e é a suite do Ubuntu que se usa.
+| `zorin18` | zorin | Ubuntu 24.04 + repositórios Zorin — ver abaixo |
+
+### O que descobri sobre os repositórios do Zorin
+
+Pediste que cada distro assentasse na sua própria base, e fui verificar se o
+Zorin tinha repositórios seus. **Têm**, e respondem — `stable`, `patches`,
+`apps`. Ia dar isso por assente. O índice está vazio:
+
+```
+.../stable/dists/noble/main/binary-amd64/Packages   0 bytes
+SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        ← este é o SHA256 do ficheiro vazio
+```
+
+O mesmo em `jammy` (Zorin 17). Os pacotes próprios do Zorin vêm **dentro da ISO
+deles**, não de um repositório público.
+
+Portanto: `make iso zorinos` constrói sobre **Ubuntu 24.04**, que é a base real
+do Zorin 18, com os repositórios dele já configurados para quando passarem a
+publicar. Não é o mesmo que a ISO do Zorin, e não vale a pena fingir que é.
 
 ### Uma lista, vários alvos
 
