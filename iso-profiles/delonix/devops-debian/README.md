@@ -43,7 +43,7 @@ dependência da distribuição.
 - [x] **Preflight** (`make preflight-debian`) — resolve a transação a seco
 - [x] `Packages` inicial: 132 nomes, transação resolve com 1629 pacotes
 - [ ] `Packages` completo (faltam as ferramentas que só existem como binário)
-- [ ] `scripts/build-debian.sh` com live-build
+- [~] `scripts/build-debian.sh` — rootfs e squashfs provados; falta a ISO
 - [ ] Pacotes `.deb` para branding/settings/tools
 - [ ] Calamares para a família Debian
 
@@ -59,6 +59,29 @@ apanhados em dois minutos em vez de quarenta:
 ```
 
 Depois de corrigidos: **132 pacotes → 1629 com dependências, sem conflitos.**
+
+### A mecânica está provada
+
+Num contentor, com três pacotes da nossa lista, para não descarregar 4 GB:
+
+```
+mmdebstrap 1.4.3 · success in 70.9 seconds
+rootfs 360 MB   →  squashfs zstd-19: 107 MB
+PRETTY_NAME="Ubuntu 24.04 LTS"  ·  zsh ✓  ·  rg ✓
+```
+
+### Porque não `live-build`
+
+É a ferramenta clássica do Debian e faz isto tudo. Não a usamos por uma razão
+que esta semana tornou clara: o valor está em conseguir **depurar**. O
+live-build esconde as fases atrás de configuração própria, e quando falha a meio
+é preciso aprender as convenções dele para descobrir onde.
+
+O `build-debian.sh` são cinco passos legíveis — sistema base, pacotes, overlay,
+squashfs, ISO — cada um com o seu marcador. Falha, vê-se onde, repete-se só
+esse. E não corre dentro de um contentor: o `mmdebstrap` constrói um sistema
+Debian a partir de qualquer host, o que nos poupa a camada que mais problemas
+deu na edição Manjaro.
 
 ### A regra desta edição
 
