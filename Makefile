@@ -123,5 +123,6 @@ clean:
 	@echo "limpo."
 
 # Edição Debian: resolve a transação apt a seco, antes de construir.
+# ALVO=noble|jammy|bookworm|trixie  (por omissão: noble)
 preflight-debian:
-	@./scripts/preflight-debian.sh
+	@./scripts/preflight-debian.sh $(ALVO)

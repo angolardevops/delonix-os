@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Resolve a transação de pacotes da edição Debian SEM instalar nada.
 #
-#   ./scripts/preflight-debian.sh      # ~2 minutos
-#   make preflight-debian
+#   ./scripts/preflight-debian.sh                # Ubuntu 24.04 (por omissão)
+#   ./scripts/preflight-debian.sh bookworm       # Debian 12
+#   make preflight-debian ALVO=jammy
 #
 # É o equivalente do preflight.sh da edição Manjaro, e existe pela mesma razão —
 # aprendida da pior maneira: nesta semana perdemos quatro builds a descobrir
@@ -16,7 +17,13 @@ set -uo pipefail
 REPO_DIR=${DELONIX_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 LISTA="$REPO_DIR/iso-profiles/delonix/devops-debian/Packages"
 ENGINE=${DELONIX_ENGINE:-podman}
-IMAGE=${DELONIX_IMAGE_DEB:-docker.io/library/ubuntu:24.04}
+
+# shellcheck source=lib-debian.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-debian.sh"
+SUITE=${1:-${DELONIX_SUITE:-noble}}
+alvo_valido "$SUITE" || exit 1
+FAMILIA=$(alvo_familia "$SUITE")
+IMAGE=${DELONIX_IMAGE_DEB:-docker.io/library/$FAMILIA:$SUITE}
 
 RED=$'\e[31m'; GRN=$'\e[32m'; YLW=$'\e[33m'; BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
 ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$1"; }
@@ -26,11 +33,11 @@ warn() { printf '  %s!%s %s\n' "$YLW" "$RST" "$1"; }
 [[ -f $LISTA ]] || { echo "sem $LISTA"; exit 1; }
 command -v "$ENGINE" >/dev/null || { echo "preciso do $ENGINE"; exit 1; }
 
-PACOTES=$(sed 's/#.*//' "$LISTA" | tr -s ' \t' '\n' | grep -E '^[a-z0-9]' | sort -u | tr '\n' ' ')
+PACOTES=$(expandir_pacotes "$LISTA" "$SUITE" | tr '\n' ' ')
 N=$(wc -w <<<"$PACOTES")
 
-printf '\n%sPreflight (Debian)%s — a resolver %d pacotes no Ubuntu 24.04\n\n' \
-    "$BLD" "$RST" "$N"
+printf '\n%sPreflight%s — %d pacotes em %s\n\n' \
+    "$BLD" "$RST" "$N" "$(alvo_desc "$SUITE")"
 
 SAIDA=$(mktemp); trap 'rm -f "$SAIDA"' EXIT
 "$ENGINE" run --rm --dns=1.1.1.1 --dns=8.8.8.8 \
@@ -38,8 +45,13 @@ SAIDA=$(mktemp); trap 'rm -f "$SAIDA"' EXIT
     "$IMAGE" bash -c '
         # `universe` traz metade das ferramentas de DevOps; sem ela metade da
         # lista parece não existir e perde-se uma tarde a procurar porquê.
+        # `universe` no Ubuntu, `contrib`/`non-free` no Debian: metade das
+        # ferramentas de DevOps vive fora do `main`, e sem isto metade da lista
+        # parece não existir.
         sed -i "s/^Components: main$/Components: main universe multiverse restricted/" \
             /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+        sed -i "s/^Components: main$/Components: main contrib non-free non-free-firmware/" \
+            /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
         apt-get update -qq 2>&1 | tail -3
         # `--simulate` calcula tudo e não toca em nada. `-o Debug::NoLocking`
         # evita precisar de privilégios de escrita nos ficheiros de estado.
@@ -51,7 +63,7 @@ falhas=0
 # --- 1. pacotes que não existem ---------------------------------------------
 if grep -qE 'Unable to locate package|has no installation candidate' "$SAIDA"; then
     while read -r p; do
-        bad "não existe no Ubuntu 24.04: $p"
+        bad "não existe em $SUITE: $p"
         ((falhas++))
     done < <(grep -oP "Unable to locate package \K\S+|Package '\K[^']+(?=' has no installation candidate)" \
              "$SAIDA" | sort -u)

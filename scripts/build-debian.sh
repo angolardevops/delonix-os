@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # DelonixOS — construir a ISO da edição Debian/Ubuntu.
 #
-#   ./scripts/build-debian.sh              # ISO completa
-#   ./scripts/build-debian.sh --clean      # deitar fora o rootfs e recomeçar
+#   ./scripts/build-debian.sh                    # Ubuntu 24.04 (por omissão)
+#   ./scripts/build-debian.sh bookworm           # Debian 12
+#   ./scripts/build-debian.sh noble --clean      # refazer do zero
+#
+# Alvos: ver `ALVOS` em lib-debian.sh. O Zorin não entra na lista porque não
+# tem repositórios de base próprios — é Ubuntu por baixo, e é a suite do Ubuntu
+# que se usa (o 18 é `noble`, o 17 é `jammy`).
 #
 # PORQUE NÃO `live-build`
 #
@@ -20,9 +25,17 @@ REPO_DIR=${DELONIX_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 PERFIL="$REPO_DIR/iso-profiles/delonix/devops-debian"
 CACHE="${DELONIX_CACHE:-$REPO_DIR/.cache}/debian"
 OUT="$REPO_DIR/out/debian"
-SUITE=${DELONIX_SUITE:-noble}          # Ubuntu 24.04 LTS, a base do Zorin 18
-MIRROR=${DELONIX_APT_MIRROR:-http://archive.ubuntu.com/ubuntu}
-ROOTFS="$CACHE/rootfs"
+# shellcheck source=lib-debian.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-debian.sh"
+SUITE=noble
+[[ ${1:-} =~ ^[a-z]+$ ]] && { SUITE=$1; shift; }
+SUITE=${DELONIX_SUITE:-$SUITE}
+alvo_valido "$SUITE" || exit 1
+MIRROR=${DELONIX_APT_MIRROR:-$(alvo_mirror "$SUITE")}
+# Um rootfs por alvo: construir Debian por cima de um rootfs Ubuntu é
+# exactamente o tipo de estado envenenado que custou builds na outra edição.
+ROOTFS="$CACHE/$SUITE/rootfs"
+CACHE="$CACHE/$SUITE"
 
 BLD=$'\e[1m'; DIM=$'\e[2m'; RST=$'\e[0m'
 log()  { printf '\n%s→ %s%s\n' "$BLD" "$*" "$RST"; }
@@ -61,14 +74,15 @@ fi
 
 # --- 1. rootfs -----------------------------------------------------------------
 if [[ ! -f $CACHE/build.rootfs ]]; then
-    log "a criar o sistema base ($SUITE)"
-    PACOTES=$(sed 's/#.*//' "$PERFIL/Packages" | tr -s ' \t' '\n' |
-              grep -E '^[a-z0-9]' | sort -u | paste -sd,)
+    log "a criar o sistema base — $(alvo_desc "$SUITE")"
+    PACOTES=$(expandir_pacotes "$PERFIL/Packages" "$SUITE" | paste -sd,)
     # `--variant=important` dá o mínimo utilizável sem os `recommends` que
     # enchem a imagem — é o equivalente do que fizemos com o `--needed`.
     sudo mmdebstrap \
         --variant=important \
-        --components='main,universe,multiverse,restricted' \
+        --components="$([[ $(alvo_familia "$SUITE") == ubuntu ]] &&
+                        echo 'main,universe,multiverse,restricted' ||
+                        echo 'main,contrib,non-free,non-free-firmware')" \
         --include="$PACOTES" \
         --aptopt='Apt::Install-Recommends "false"' \
         "$SUITE" "$ROOTFS" "$MIRROR"

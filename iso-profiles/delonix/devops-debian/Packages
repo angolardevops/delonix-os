@@ -4,12 +4,21 @@
 # está lá escrito. O que muda são os NOMES: dos 444 pacotes explícitos da outra
 # edição, só ~35 se chamam igual em apt.
 #
-# Esta lista é o PONTO DE PARTIDA, não o fim. O `make preflight-debian` resolve-a
+# CONDICIONAIS POR ALVO — medido, não suposto: dos catorze pacotes que testei,
+# três não existem no Debian 12. Sintaxe:
+#
+#   ripgrep          entra em todos os alvos
+#   >ubuntu eza      só na família Ubuntu
+#   >bookworm foo    só nessa suite
+#   >!debian bar     em tudo MENOS na família Debian
+#
+# Esta lista é o PONTO DE PARTIDA
 # contra o Ubuntu real e diz quais não existem — é assim que ela cresce, e é a
 # lição da edição Manjaro: nunca acrescentar um nome sem o resolver a seco.
 
 ## --- base do sistema ---------------------------------------------------------
-ubuntu-minimal
+>ubuntu ubuntu-minimal  # no Debian o `--variant=important` do mmdebstrap já dá
+                        # o equivalente, sem meta-pacote
 linux-image-generic
 linux-headers-generic
 systemd-timesyncd
@@ -59,7 +68,7 @@ fzf
 ripgrep
 fd-find                 # o binário chama-se `fdfind`; o .zshrc põe um alias
 bat                     # o binário chama-se `batcat`; idem
-eza                     # existe a partir do 24.04
+>ubuntu eza             # só a partir do Ubuntu 24.04; no Debian não existe
 zoxide
 direnv
 jq
@@ -73,14 +82,15 @@ pv
 moreutils
 parallel
 entr
-just
+>ubuntu just            # idem — no Debian instala-se pelo cargo
 hexyl
 neovim
 
 ## --- git ---------------------------------------------------------------------
 git
 git-lfs
-git-delta
+>ubuntu git-delta       # no Debian 12 não está empacotado — instala-se pelo
+                        # cargo, e o delonix-toolbox trata disso
 gh                      # o github-cli chama-se `gh` em apt
 pre-commit
 gnupg
@@ -97,7 +107,7 @@ crun
 uidmap                  # sem isto NÃO há rootless: é o newuidmap/newgidmap
 slirp4netns
 fuse-overlayfs
-docker-compose-v2
+>ubuntu docker-compose-v2   # no Debian o nome e a versão divergem
 # `dive` não existe em apt — é um binário publicado no GitHub, como o k9s, o
 # stern e o kubectx. Esses vão todos para o delonix-toolbox na edição Debian,
 # em vez de fingirmos que o apt os tem.
@@ -121,12 +131,15 @@ python3-pip
 python3-venv
 pipx
 golang-go
-rustup                  # o rustup gere o rust; melhor que o `rustc` do apt
+>ubuntu rustup          # gere as toolchains do Rust
+>debian rustc           # no Debian 12 o rustup não é instalável; ficam os
+>debian cargo           # pacotes da distro, e o rustup vem pelo toolbox
 nodejs
 npm
 
 ## --- observabilidade e desempenho do posto ----------------------------------
-linux-tools-generic     # o `perf`
+>ubuntu linux-tools-generic   # o `perf`
+>debian linux-perf      # o mesmo binário, outro nome
 bpftrace
 sysstat
 numactl
@@ -157,7 +170,8 @@ shellcheck
 
 ## --- instalador e live -------------------------------------------------------
 calamares
-calamares-settings-ubuntu-common
+>ubuntu calamares-settings-ubuntu-common   # só existe no Ubuntu; no Debian a
+                        # configuração do Calamares é toda nossa
 live-boot
 live-config
 

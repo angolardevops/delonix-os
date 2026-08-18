@@ -83,6 +83,48 @@ esse. E não corre dentro de um contentor: o `mmdebstrap` constrói um sistema
 Debian a partir de qualquer host, o que nos poupa a camada que mais problemas
 deu na edição Manjaro.
 
+## Como construir para outro alvo
+
+```bash
+make preflight-debian                 # Ubuntu 24.04 (por omissão)
+make preflight-debian ALVO=bookworm   # Debian 12
+./scripts/build-debian.sh bookworm    # o build para o mesmo alvo
+```
+
+| Alvo | Família | O que é |
+|---|---|---|
+| `noble` | ubuntu | Ubuntu 24.04 LTS — **a base do Zorin 18** |
+| `jammy` | ubuntu | Ubuntu 22.04 LTS — a base do Zorin 17 |
+| `bookworm` | debian | Debian 12 |
+| `trixie` | debian | Debian 13 |
+
+O Zorin não é um alvo porque **não tem repositórios de base próprios**: é Ubuntu
+por baixo, e é a suite do Ubuntu que se usa.
+
+### Uma lista, vários alvos
+
+Os nomes divergem, e não pouco. Medido, não suposto:
+
+```
+noble     132 pacotes → 1629 com dependências
+bookworm  127 pacotes → 1579 com dependências
+```
+
+O preflight em Debian apanhou cinco que eu tinha escrito a pensar em Ubuntu:
+`ubuntu-minimal`, `calamares-settings-ubuntu-common`, `git-delta`,
+`linux-tools-generic` e `rustup`. Nenhum foi removido — cada um ganhou o
+equivalente Debian ou uma condição:
+
+```
+>ubuntu linux-tools-generic     # o `perf`
+>debian linux-perf              # o mesmo binário, outro nome
+```
+
+A sintaxe é a do `manjaro-tools`, que já conhecemos: `>ubuntu`, `>bookworm`,
+`>!debian` para excluir. E o `lib-debian.sh` é partilhado pelo preflight e pelo
+build **de propósito** — na edição Manjaro os dois divergiram, e isso deixou
+passar uma versão de 2024 que custou três builds.
+
 ### A regra desta edição
 
 Nenhum nome entra nesta lista sem passar pelo preflight. É barato e é o que
