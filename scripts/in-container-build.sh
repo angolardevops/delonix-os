@@ -249,6 +249,39 @@ else
     exit 1
 fi
 
+# --- repositórios locais visíveis DENTRO do chroot -----------------------------
+# A fase `mhwd` é a única que corre o pacman dentro do chroot:
+#
+#   copy_from_cache(){ chroot-run ... "$1" pacman -v -Syw $2 ... }
+#
+# As outras usam `basestrap --root`, que corre ao nível do contentor — por isso
+# o `file:///var/cache/delonix-aur` resolvia bem até aqui. Na mhwd não, e o
+# sintoma é enganador:
+#
+#   File '.../mhwdfs/opt/mhwd/pkg/*pkg.tar*' not found
+#
+# (a transação falha por não sincronizar a db, e o rsync seguinte não encontra
+# pacotes para copiar).
+#
+# TENTEI copiar as dbs para dentro de cada chroot antes do buildiso. Não serve:
+# o buildiso REFAZ esses chroots do zero, e a cópia desaparece com eles. Foi a
+# terceira vez que esta mesma forma me mordeu — depender de escrever no chroot
+# antes de uma fase que o recria.
+#
+# No overlay funciona porque o `copy_overlay` o instala DENTRO do sistema de
+# ficheiros construído, na altura certa. Bastam as dbs: os pacotes que a mhwd
+# instala vêm todos do core/extra.
+OVERLAY_CACHE="$PROFILES_DIR/$EDITION/$PROFILE/desktop-overlay/var/cache"
+for repo in delonix-aur delonix-repo; do
+    origem=/var/cache/$repo
+    [[ -d $origem ]] || continue
+    install -d "$OVERLAY_CACHE/$repo"
+    # `-L` resolve os links do repo-add (foo.db → foo.db.tar.gz): um link para
+    # fora do chroot não vale nada lá dentro.
+    cp -Lf "$origem"/*.db "$origem"/*.files "$OVERLAY_CACHE/$repo/" 2>/dev/null || true
+    log "repositório $repo visível no chroot (via desktop-overlay)"
+done
+
 log "a configurar o manjaro-tools"
 # `build_mirror` é A chave. O mkchroot instala TUDO dentro dos chroots a partir
 # deste único servidor — não usa o /etc/pacman.d/mirrorlist. E o valor por
@@ -341,77 +374,6 @@ else
         # delas é a do servidor, por isso dá para ver de onde vieram.
         rm -f "$CHROOT_BASE/$fs"/var/lib/pacman/sync/{core,extra,multilib}.db
 
-        # Os repositórios locais TÊM de ser alcançáveis de DENTRO do chroot.
-        #
-        # A fase mhwd é a única que corre o pacman lá dentro:
-        #
-        #   copy_from_cache(){ chroot-run ... "$1" pacman -v -Syw $2 ... }
-        #
-        # As outras usam `basestrap --root`, que corre ao nível do contentor —
-        # e por isso o `file:///var/cache/delonix-aur` resolvia bem. Na mhwd não:
-        #
-        #   error: failed retrieving file 'delonix-aur.db' from disk :
-        #          Could not open file /var/cache/delonix-aur/delonix-aur.db
-        #
-        # Bastam as bases de dados: os pacotes que a mhwd instala vêm todos do
-        # core/extra. São umas centenas de KB, não os 1,2 GB do AUR.
-        # A marca do Calamares: copiar o componente `manjaro` (que o
-        # configure_branding já reescreveu com os nossos textos) para o nome
-        # que o settings.conf procura. Sem isto o instalador não abre.
-        if [[ $fs == livefs ]]; then
-            # O Calamares exige DUAS coisas que ninguém documenta junto:
-            #   1. a pasta do componente tem de se chamar como o `branding:` do
-            #      settings.conf (que o manjaro-tools escreve como ${iso_name});
-            #   2. o `componentName:` DENTRO do branding.desc tem de ser igual ao
-            #      nome da pasta. Se divergirem, o Calamares não carrega e o
-            #      ícone do ambiente de trabalho não faz nada.
-            #
-            # Na primeira tentativa isto falhou por minha causa: deixei uma
-            # pasta-marcador vazia no live-overlay e a condição de cópia era
-            # `! -d destino`. A pasta já existia, a cópia nunca aconteceu, e o
-            # instalador continuou sem abrir. Agora a condição é o CONTEÚDO.
-            marca_orig="$CHROOT_BASE/$fs/usr/share/calamares/branding/manjaro"
-            marca_nova="$CHROOT_BASE/$fs/usr/share/calamares/branding/${ISO_NAME}"
-            if [[ -f $marca_orig/branding.desc ]]; then
-                rm -rf "$marca_nova"
-                cp -a "$marca_orig" "$marca_nova"
-                sed -i "s|^\(\s*componentName\s*:\s*\).*|\1${ISO_NAME}|" \
-                    "$marca_nova/branding.desc"
-                log "  livefs: marca ${ISO_NAME} (componentName: $(grep -oP '^\s*componentName\s*:\s*\K\S+' "$marca_nova/branding.desc"))"
-            else
-                log "  AVISO: sem $marca_orig — o instalador não vai abrir"
-            fi
-        fi
-
-        # O tema do GRUB do live tem de existir DENTRO do livefs, e essa fase
-        # já pode estar marcada como concluída — o `copy_overlay` não volta a
-        # correr. Injectamo-lo aqui para não obrigar a refazer a fase inteira.
-        if [[ $fs == livefs && -d $TEMA_ORIGEM ]]; then
-            destino_tema="$CHROOT_BASE/$fs/usr/share/grub/themes/${ISO_NAME}-live"
-            install -d "$destino_tema"
-            cp -a "$TEMA_ORIGEM"/. "$destino_tema"/
-            # O nosso theme.txt pede fontes por nome ("DejaVu Sans Bold 20") e o
-            # GRUB só as encontra se os .pf2 estiverem na pasta do tema. O
-            # `grub-theme-live-manjaro`, que já vem no Packages-Live, traz-nas —
-            # reaproveitamo-las em vez de as gerar. Sem isto o menu do live
-            # arranca na mesma, mas com a fonte de recurso.
-            tema_manjaro="$CHROOT_BASE/$fs/usr/share/grub/themes/manjaro-live"
-            if compgen -G "$tema_manjaro/*.pf2" >/dev/null; then
-                cp -n "$tema_manjaro"/*.pf2 "$destino_tema"/ 2>/dev/null || true
-                log "  livefs: fontes .pf2 reaproveitadas do tema da Manjaro"
-            fi
-            log "  livefs: tema ${ISO_NAME}-live instalado"
-        fi
-
-        for repo in delonix-aur delonix-repo; do
-            origem=/var/cache/$repo
-            [[ -d $origem ]] || continue
-            destino="$CHROOT_BASE/$fs/var/cache/$repo"
-            install -d "$destino"
-            # `-L` resolve os links que o repo-add cria (foo.db → foo.db.tar.gz):
-            # um link para fora do chroot não vale nada lá dentro.
-            cp -Lf "$origem"/*.db "$origem"/*.files "$destino"/ 2>/dev/null || true
-        done
         # `((encontrados++))` NÃO serve aqui: o pós-incremento devolve o valor
         # ANTIGO, e um 0 é estado de saída 1 — com `set -e`, o script morre na
         # primeira iteração. Foi assim que este bloco, já a correr no caminho
@@ -561,7 +523,12 @@ invalidar_fases() {
         fi
 
         # O ficheiro mais recente de entre as dependências desta fase.
-        mais_novo=$(find ${deps[$fase]} -newer "$marcador" -print -quit 2>/dev/null)
+        # `-not -path '*/var/cache/*'`: as dbs dos repositórios locais são
+        # escritas no desktop-overlay a CADA build (ver OVERLAY_CACHE acima).
+        # Sem esta exclusão, o overlay ficaria sempre mais recente que o
+        # marcador e a fase desktop — a mais cara — repetia-se sempre.
+        mais_novo=$(find ${deps[$fase]} -newer "$marcador" \
+                        -not -path '*/var/cache/*' -print -quit 2>/dev/null)
         if [[ -n $mais_novo ]]; then
             log "  $fase: ${mais_novo#$pdir/} mudou → vai repetir"
             rm -f "$marcador"

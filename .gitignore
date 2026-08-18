@@ -24,3 +24,6 @@ iso-profiles/delonix/devops/desktop-overlay/usr/local/bin/delonixctl
 *.iso.sig
 *.log
 __pycache__/
+
+# dbs dos repositórios locais, escritas no overlay durante o build
+iso-profiles/*/*/desktop-overlay/var/cache/
