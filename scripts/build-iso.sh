@@ -32,8 +32,18 @@ case ${DISTRO,,} in
         exec "$REPO_DIR/scripts/build.sh" "$@"
         ;;
     zorinos|zorin|zorin18)
-        printf '\n%s→ Zorin OS 18%s %s(mmdebstrap · apt · repositórios Zorin)%s\n' "$BLD" "$RST" "$DIM" "$RST"
-        exec "$REPO_DIR/scripts/build-debian.sh" zorin18 "$@"
+        # A base REAL do Zorin: a ISO Core gratuita, remasterizada. Os pacotes
+        # próprios dele NÃO estão em repositório público — medido, o índice de
+        # packages.zorinos.com tem 0 bytes — vivem dentro da ISO. Por isso este
+        # alvo não usa o mmdebstrap como os outros da família Debian.
+        printf '\n%s→ Zorin OS 18 Core%s %s(ISO gratuita remasterizada)%s\n' "$BLD" "$RST" "$DIM" "$RST"
+        exec "$REPO_DIR/scripts/build-zorin.sh" "$@"
+        ;;
+    zorin-ubuntu)
+        # A alternativa honesta: Ubuntu 24.04 puro, a base de que o Zorin deriva.
+        # Horas mais rápido e sem questões de marca — mas sem nada do Zorin.
+        printf '\n%s→ Ubuntu 24.04%s %s(a base do Zorin, sem o Zorin)%s\n' "$BLD" "$RST" "$DIM" "$RST"
+        exec "$REPO_DIR/scripts/build-debian.sh" noble "$@"
         ;;
     zorin17)
         exec "$REPO_DIR/scripts/build-debian.sh" zorin17 "$@" ;;
