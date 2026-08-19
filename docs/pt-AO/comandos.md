@@ -13,6 +13,7 @@ ficam em português, que é onde o raciocínio foi escrito.
 | [`delonix update`](delonix-toolbox.md#update--sistema-e-motor-num-comando) | actualizar o sistema e o Delonix Runtime |
 | [`delonix-load`](#delonix-load) | correr trabalho pesado sem perder a máquina |
 | [`delonix-tune`](#delonix-tune) | afinar a máquina ao hardware que ela tem mesmo |
+| [`delonix-autotune`](#delonix-autotune) | **adapta-se à carga sozinho, continuamente** |
 | [`delonix tunnel`](#delonix-tunnel) | pôr um serviço local numa URL pública |
 | [`delonix-kernel`](kernel.md) | compilar, arrancar e instalar um kernel Linux |
 | [`delonix-video`](#delonix-video) | levar gravações do OBS para o DaVinci Resolve |
@@ -138,6 +139,83 @@ fabricante:
 | bateria | `quiet` / `low-power` | tecto de potência mais baixo, ventoinha calma |
 
 Para carga sustentada de propósito: `delonix-tune profile lab`.
+
+## `delonix-autotune` — a máquina adapta-se sozinha
+
+```bash
+systemctl status delonix-autotune     # corre desde o arranque
+delonix-autotune --once               # o que decidiria agora
+journalctl -u delonix-autotune -f     # o que decidiu, e porquê
+```
+
+Um perfil fixo está sempre errado em metade do tempo. `performance` mantém a
+ventoinha alta enquanto se lê documentação; `powersave` deixa a compilação
+arrastar-se. E ninguém devia ter de trocar de perfil à mão consoante o que vai
+fazer a seguir.
+
+### Decide por PSI, não por *load average*
+
+O `load average` conta processos prontos a correr, e **mente**: uma máquina com
+load 8 e 16 núcleos está descansada. O que interessa é a **pressão** — quanto
+tempo é que houve trabalho parado à espera de um recurso — e o kernel publica
+isso em `/proc/pressure`:
+
+```
+some avg10=40   → em 40% dos últimos dez segundos alguém esperou por CPU
+```
+
+Isso é contenção a sério. A pressão de memória conta como carga pela mesma
+razão: uma máquina a bater no limite de RAM está a trabalhar, mesmo que o CPU
+pareça livre.
+
+### Três defesas contra a oscilação
+
+Um controlador destes, mal feito, comuta de perfil de segundo a segundo — e isso
+é **pior** do que não ter nenhum, porque cada mudança de `platform_profile` faz
+a ventoinha acelerar e abrandar.
+
+| Defesa | Como |
+|---|---|
+| **Histerese** | sobe aos 35% de pressão, mas só desce abaixo de 15%. A zona entre os dois não muda nada |
+| **Assimetria** | sobe com **uma** amostra — o primeiro segundo de uma compilação não pode ser lento — e desce só ao fim de **quatro** seguidas, porque uma pausa não é o fim do trabalho |
+| **Permanência** | no mínimo 30 s em cada estado, aconteça o que acontecer |
+
+Verificado com leituras injectadas:
+
+```
+pressão   5%    trabalho
+pressão  60%  → carga        ← subiu à primeira
+pressão  25%    carga        ← zona morta: não mexe
+pressão  20%    carga
+pressão   2%    carga        ← 1ª baixa
+pressão   2%    carga        ← 2ª
+pressão   2%    carga        ← 3ª
+pressão   2%  → trabalho     ← só à 4ª
+```
+
+### O tecto térmico, e porque não usa o contador de *throttling*
+
+Acima de 88 °C recua um nível, **mesmo com carga**. Não é para poupar bateria: é
+porque um processador ao limite térmico já está a reduzir-se sozinho, e insistir
+só serve para a ventoinha gritar.
+
+Medido no Ryzen deste projecto: `core_throttle_count` **não existe** — é uma
+interface da Intel. Por isso o controlador decide pela temperatura, que existe
+em todo o lado, em vez de depender de um contador que metade das máquinas não
+tem.
+
+### Em bateria não sobe ao nível máximo
+
+É onde a ventoinha se ouve e onde a bateria se esvazia. Quem quiser mesmo:
+`delonix-tune profile lab`.
+
+### O controlador não pode ser parte do problema
+
+O serviço corre com `Nice=10`, `CPUWeight=10`, `MemoryMax=32M` e `ProtectSystem=strict`,
+com escrita permitida apenas em `/sys/firmware/acpi/platform_profile` e
+`/sys/devices/system/cpu`. Um laço que acorda de dez em dez segundos para ler
+três ficheiros custa quase nada — mas «quase nada» sem tecto tem o hábito de
+crescer.
 
 ## `delonix tunnel`
 

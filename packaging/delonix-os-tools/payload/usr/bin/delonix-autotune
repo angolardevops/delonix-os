@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+#
+# delonix-autotune — adapta a máquina à carga que ela tem, continuamente.
+#
+#   systemctl status delonix-autotune     # está a correr desde o arranque
+#   delonix-autotune --once               # uma passagem, para ver o que decidiria
+#   journalctl -u delonix-autotune -f     # o que decidiu e porquê
+#
+# O PROBLEMA QUE RESOLVE
+#
+# Um perfil fixo está sempre errado em metade do tempo. `performance` mantém a
+# ventoinha alta enquanto se lê documentação; `powersave` deixa a compilação
+# arrastar-se. E o utilizador não devia ter de trocar de perfil à mão consoante
+# o que vai fazer a seguir.
+#
+# COMO DECIDE — PSI, não load average
+#
+# O `load average` conta processos prontos a correr, e mente: uma máquina com
+# load 8 e 16 núcleos está descansada. O que interessa é a PRESSÃO — quanto
+# tempo é que trabalho ficou parado à espera de um recurso — e o kernel publica
+# isso em /proc/pressure. `some avg10=40` significa que em 40% dos últimos dez
+# segundos houve alguém à espera de CPU. Isso é contenção a sério.
+#
+# A REGRA CONTRA A OSCILAÇÃO
+#
+# Um controlador destes, mal feito, comuta de perfil de segundo a segundo — e
+# isso é pior do que não ter nenhum, porque cada mudança de platform_profile faz
+# a ventoinha acelerar e abrandar. Três defesas:
+#
+#   1. HISTERESE: sobe-se aos 35% de pressão, mas só se desce abaixo de 15%.
+#      A zona entre os dois não muda nada.
+#   2. ASSIMETRIA: sobe-se com UMA amostra (a resposta tem de ser imediata,
+#      senão o primeiro segundo de cada compilação é lento), desce-se só ao fim
+#      de QUATRO seguidas — porque uma pausa não é o fim do trabalho.
+#   3. PERMANÊNCIA: no mínimo 30 s em cada estado, aconteça o que acontecer.
+#
+# O TECTO TÉRMICO
+#
+# Acima de 88 °C recua-se um nível, mesmo com carga. Não é para poupar bateria:
+# é porque um processador ao limite térmico já está a reduzir-se sozinho, e
+# insistir só serve para a ventoinha gritar. Neste AMD não há contador de
+# throttling (`core_throttle_count` não existe), por isso a temperatura é o
+# único sinal — e é por isso que ele existe em vez de eu confiar no contador.
+set -uo pipefail
+
+INTERVALO=${DELONIX_AUTOTUNE_INTERVALO:-10}
+PERMANENCIA=${DELONIX_AUTOTUNE_PERMANENCIA:-30}
+TEMP_TECTO=${DELONIX_AUTOTUNE_TEMP:-88}
+SOBE=35        # pressão a partir da qual se sobe de nível
+DESCE=15       # e abaixo da qual se desce — a diferença é a histerese
+CICLOS_DESCE=4
+
+PP=/sys/firmware/acpi/platform_profile
+UMA_VEZ=0
+[[ ${1:-} == --once ]] && UMA_VEZ=1
+
+log() { if (( UMA_VEZ )); then printf '%s\n' "$*"; else printf '%s\n' "$*"; fi; }
+
+# --- leituras ------------------------------------------------------------------
+pressao_cpu() { awk '/^some/{for(i=1;i<=NF;i++) if($i ~ /^avg10=/){sub("avg10=","",$i); print int($i); exit}}' /proc/pressure/cpu 2>/dev/null || echo 0; }
+pressao_mem() { awk '/^some/{for(i=1;i<=NF;i++) if($i ~ /^avg10=/){sub("avg10=","",$i); print int($i); exit}}' /proc/pressure/memory 2>/dev/null || echo 0; }
+
+temperatura() {
+    local t
+    # Preferir o sensor do pacote/die; cair para qualquer thermal_zone. Em AMD é
+    # o k10temp, em Intel o coretemp — os dois expõem por hwmon.
+    for f in /sys/class/hwmon/hwmon*/temp1_input; do
+        [[ -r $f ]] || continue
+        local nome; nome=$(cat "$(dirname "$f")/name" 2>/dev/null)
+        [[ $nome == k10temp || $nome == coretemp ]] && { t=$(cat "$f"); break; }
+    done
+    [[ -z ${t:-} ]] && t=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)
+    echo $(( t / 1000 ))
+}
+
+na_corrente() {
+    local f
+    for f in /sys/class/power_supply/A{C,DP}*/online; do
+        [[ -r $f ]] && [[ $(cat "$f") == 1 ]] && return 0
+    done
+    return 1
+}
+
+# --- actuação ------------------------------------------------------------------
+# Três níveis, e o que cada um significa para o hardware.
+aplicar() {
+    local nivel=$1 perfil epp
+    case $nivel in
+        1) perfil="quiet low-power balanced"; epp=power ;;
+        2) perfil="balanced";                 epp=balance_performance ;;
+        3) perfil="performance balanced";     epp=performance ;;
+    esac
+
+    if [[ -w $PP ]]; then
+        local disp; disp=$(cat "${PP}_choices" 2>/dev/null || echo "")
+        for p in $perfil; do
+            [[ " $disp " == *" $p "* ]] && { echo "$p" >"$PP" 2>/dev/null; break; }
+        done
+    fi
+    # O EPP é o que manda de facto num amd-pstate-epp / intel_pstate: o governor
+    # `powersave` com EPP `performance` é rápido, e o nome engana muita gente.
+    for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+        [[ -w $f ]] && echo "$epp" >"$f" 2>/dev/null
+    done
+}
+
+nome_nivel() { case $1 in 1) echo "repouso";; 2) echo "trabalho";; 3) echo "carga sustentada";; esac; }
+
+# --- o laço --------------------------------------------------------------------
+nivel=2
+ultima_mudanca=0
+baixo_seguidos=0
+aplicar $nivel
+
+while true; do
+    p_cpu=$(pressao_cpu); p_mem=$(pressao_mem); temp=$(temperatura)
+    agora=${SECONDS}
+    alvo=$nivel
+
+    # A pressão de memória conta como carga: uma máquina a bater no limite de RAM
+    # está a trabalhar, mesmo que o CPU pareça livre.
+    pressao=$(( p_cpu > p_mem ? p_cpu : p_mem ))
+
+    if (( pressao >= SOBE )); then
+        alvo=3; baixo_seguidos=0
+    elif (( pressao >= DESCE )); then
+        (( nivel < 2 )) && alvo=2; baixo_seguidos=0
+    else
+        baixo_seguidos=$(( baixo_seguidos + 1 ))
+        # Descer só ao fim de CICLOS_DESCE: uma pausa entre dois comandos não é
+        # o fim do trabalho, e recuar já obriga a subir outra vez a seguir.
+        (( baixo_seguidos >= CICLOS_DESCE )) && alvo=$(( nivel > 1 ? nivel - 1 : 1 ))
+    fi
+
+    # Tecto térmico: recua um nível aconteça o que acontecer.
+    if (( temp >= TEMP_TECTO && alvo > 1 )); then
+        alvo=$(( alvo - 1 ))
+        motivo=" (tecto térmico: ${temp}°C)"
+    else
+        motivo=""
+    fi
+
+    # Em bateria não se sobe ao nível 3: é onde a ventoinha se ouve e onde a
+    # bateria se esvazia. Quem quiser mesmo: `delonix-tune profile lab`.
+    if ! na_corrente && (( alvo > 2 )); then
+        alvo=2; motivo=" (em bateria)"
+    fi
+
+    if (( alvo != nivel )) && (( agora - ultima_mudanca >= PERMANENCIA || UMA_VEZ )); then
+        log "$(nome_nivel $nivel) → $(nome_nivel $alvo)${motivo} · pressão ${pressao}% · ${temp}°C"
+        nivel=$alvo
+        ultima_mudanca=$agora
+        baixo_seguidos=0
+        aplicar $nivel
+    fi
+
+    if (( UMA_VEZ )); then
+        log "estado: $(nome_nivel $nivel) · pressão CPU ${p_cpu}% · memória ${p_mem}% · ${temp}°C · $(na_corrente && echo corrente || echo bateria)"
+        exit 0
+    fi
+    sleep "$INTERVALO"
+done

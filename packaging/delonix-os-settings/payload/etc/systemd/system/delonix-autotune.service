@@ -1,0 +1,32 @@
+[Unit]
+Description=DelonixOS — adapta a máquina à carga que ela tem
+Documentation=man:proc(5)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/delonix-autotune
+Restart=always
+RestartSec=10
+
+# O próprio controlador não pode ser parte do problema. Um laço que acorda de
+# dez em dez segundos para ler três ficheiros custa quase nada — mas «quase
+# nada» sem tecto tem o hábito de crescer, por isso fica com tecto.
+Nice=10
+CPUWeight=10
+MemoryMax=32M
+IOWeight=10
+
+# Só precisa de escrever em dois sítios. Tudo o resto do sistema fica fora de
+# alcance — um daemon que corre como root desde o arranque merece esse cuidado.
+ProtectSystem=strict
+ReadWritePaths=/sys/firmware/acpi/platform_profile /sys/devices/system/cpu
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
