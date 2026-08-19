@@ -87,6 +87,10 @@ expandir_pacotes() {
     # `>ubuntu` também vale para o Zorin: é Ubuntu por baixo, e escrever a mesma
     # condição duas vezes na lista seria só ruído.
     [[ $familia == zorin ]] && familia="ubuntu zorin"
+    # A remasterização acrescenta `remaster` à família. É assim que o bloco do
+    # ambiente de trabalho se exclui a si próprio quando a base já traz um —
+    # ver o cabeçalho desse bloco no ficheiro `Packages`.
+    familia="$familia ${DELONIX_FAMILIA_EXTRA:-}"
 
     sed 's/#.*//' "$ficheiro" | while read -r linha; do
         [[ -z ${linha// /} ]] && continue

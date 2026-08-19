@@ -31,32 +31,37 @@ apparmor
 tuned
 
 ## --- ambiente de trabalho: KDE Plasma mínimo ---------------------------------
+# `>!remaster` em todo este bloco: na REMASTERIZAÇÃO (`make iso zorinos`) o
+# ambiente de trabalho já vem na base — o Zorin traz o dele, e instalar um
+# segundo por cima seriam ~2 GB a mais e dois menus de sistema a competir. Nos
+# alvos construídos do zero (`noble`, `bookworm`, …) não há ambiente nenhum, e
+# este bloco é o que o dá.
 # `kde-plasma-desktop` traz o essencial sem o `kde-full`, que é o equivalente
 # do grupo `plasma` que também recusámos na Manjaro.
-kde-plasma-desktop
-sddm
-plasma-nm
-plasma-pa
-plasma-systemmonitor
-plasma-firewall
-kscreen
-kinfocenter
-konsole
-dolphin
-ark
-kate
-kcalc
-okular
-gwenview
-kde-spectacle          # em apt o nome leva o prefixo `kde-`
-partitionmanager
-kde-config-gtk-style
-breeze-gtk-theme
-qt6-wayland
-xdg-desktop-portal-kde
-xdg-user-dirs
-wl-clipboard
-xclip
+>!remaster kde-plasma-desktop
+>!remaster sddm
+>!remaster plasma-nm
+>!remaster plasma-pa
+>!remaster plasma-systemmonitor
+>!remaster plasma-firewall
+>!remaster kscreen
+>!remaster kinfocenter
+>!remaster konsole
+>!remaster dolphin
+>!remaster ark
+>!remaster kate
+>!remaster kcalc
+>!remaster okular
+>!remaster gwenview
+>!remaster kde-spectacle          # em apt o nome leva o prefixo `kde-`
+>!remaster partitionmanager
+>!remaster kde-config-gtk-style
+>!remaster breeze-gtk-theme
+>!remaster qt6-wayland
+>!remaster xdg-desktop-portal-kde
+>!remaster xdg-user-dirs
+>!remaster wl-clipboard
+>!remaster xclip
 
 ## --- shell e terminal --------------------------------------------------------
 zsh
