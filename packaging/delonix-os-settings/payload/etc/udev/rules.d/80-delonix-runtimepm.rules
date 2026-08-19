@@ -1,0 +1,33 @@
+# Gestão de energia em tempo de execução — o maior ganho depois do processador.
+#
+# MEDIDO no host de desenvolvimento: 23 dispositivos PCI com `power/control=on`,
+# ou seja permanentemente acordados, contra 22 em `auto`. Cada um desses são
+# décimas de watt que somam, e nenhum deles precisa de estar acordado quando não
+# está a ser usado.
+#
+# `auto` não força nada: diz ao kernel que PODE suspender o dispositivo quando
+# ele estiver inactivo. O driver decide, e quem não suporta ignora.
+
+# Áudio, portas PCIe, controladores — a maioria do barramento.
+ACTION=="add", SUBSYSTEM=="pci", ATTR{power/control}="auto"
+
+# A GPU dedicada com RTD3 (ver modprobe.d): sem isto o `auto` não chega.
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030000", \
+    ATTR{power/control}="auto"
+
+# USB: teclados e ratos ficam de fora — suspender um rato dá o atraso de meio
+# segundo ao primeiro movimento, e ninguém troca isso por miliwatts.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{bDeviceClass}!="09", \
+    ATTR{power/control}="auto", ATTR{power/autosuspend_delay_ms}="2000"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{bInterfaceClass}=="03", \
+    ATTR{power/control}="on"
+
+# Discos SATA: `med_power_with_dipm` é o que a própria Intel recomenda — poupa
+# sem os problemas de compatibilidade do `min_power` em alguns SSD.
+ACTION=="add", SUBSYSTEM=="scsi_host", KERNEL=="host*", \
+    ATTR{link_power_management_policy}="med_power_with_dipm"
+
+# Wi-Fi: poupança de energia activa. Custa alguns milissegundos de latência ao
+# acordar, e num posto de trabalho isso não se sente.
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="wl*", \
+    RUN+="/usr/bin/iw dev $name set power_save on"

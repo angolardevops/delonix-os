@@ -99,6 +99,46 @@ portátil é o mais rápido dos dois.
 Se discordares para a tua máquina, `delonix-tune profile lab` força o perfil de
 secretária e fica assim até mandares o contrário.
 
+### `delonix-tune power` — para onde vai a energia
+
+```bash
+delonix-tune power
+```
+
+Num portátil híbrido há três consumidores que ninguém vê, e este comando
+aponta-os. Corrido no ROG onde isto foi escrito:
+
+```
+✗ GPU NVIDIA active — 10 a 25 W, e a ventoinha a tirar esse calor
+!   RTD3 não configurado
+! PCIe ASPM: default — sem poupança nas ligações
+! 23 dispositivos PCI sempre acordados
+! sem zram — sob carga, a máquina congela em vez de comprimir
+```
+
+**A dGPU acordada é o maior de todos.** Num híbrido, com a placa integrada a
+fazer o trabalho, uma NVIDIA que ninguém está a usar custa entre 10 e 25 W — a
+diferença entre quatro horas de bateria e duas e meia. E é também a razão de a
+ventoinha nunca parar: o calor tem de sair de algum lado.
+
+O DelonixOS trata dos três: `NVreg_DynamicPowerManagement=0x02` liga o RTD3
+(o driver desliga a placa quando o último cliente sai), as regras udev põem os
+dispositivos PCI e USB em `auto`, e o ASPM comuta com a alimentação.
+
+### A ventoinha não se controla por software
+
+Em portáteis modernos quem manda na curva é o firmware, pelo `platform_profile`
+— `asus-nb-wmi` no ROG, `hp-wmi` nos EliteBook, e equivalentes na Dell e na
+Lenovo. É uma interface do kernel, igual em todos, e por isso não há código por
+fabricante:
+
+| Alimentação | Perfil | Porquê |
+|---|---|---|
+| corrente | `balanced` | não `performance`: manteria a ventoinha alta o dia todo por um ganho que só se vê em carga sustentada |
+| bateria | `quiet` / `low-power` | tecto de potência mais baixo, ventoinha calma |
+
+Para carga sustentada de propósito: `delonix-tune profile lab`.
+
 ## `delonix tunnel`
 
 ```bash

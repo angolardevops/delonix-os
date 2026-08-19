@@ -1,0 +1,3 @@
+# Corrente ligada ou cortada → reavaliar o perfil de energia e a ventoinha.
+# O `power_supply` dispara nos dois sentidos, que é o que queremos.
+SUBSYSTEM=="power_supply", ACTION=="change", RUN+="/usr/lib/delonix/energia"

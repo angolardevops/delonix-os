@@ -1,0 +1,14 @@
+[Unit]
+# O udev só dispara quando a corrente MUDA. No arranque ninguém mudou nada, e a
+# máquina ficaria no que o firmware deixou — que num ROG é `performance`, com a
+# ventoinha audível desde o primeiro segundo.
+Description=DelonixOS — perfil de energia conforme a alimentação
+After=multi-user.target
+ConditionPathExists=/sys/firmware/acpi/platform_profile
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/delonix/energia
+
+[Install]
+WantedBy=multi-user.target

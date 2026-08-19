@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Reage à ligação e ao corte da corrente. Chamado pelo udev.
+#
+# O QUE CONTROLA A VENTOINHA
+#
+# Em portáteis modernos a curva da ventoinha não se define por software: quem
+# manda é o firmware, através do `platform_profile` (o `asus-nb-wmi` no ROG, o
+# `hp-wmi` nos EliteBook, e equivalentes na Dell e na Lenovo). É uma interface
+# do kernel, igual em todos — por isso isto funciona sem código por fabricante.
+#
+#   low-power / quiet  → tecto de potência mais baixo, ventoinha calma
+#   balanced           → o que se quer 90% do tempo
+#   performance        → tecto alto, ventoinha audível
+#
+# Na tomada usa-se `balanced`, não `performance`: um portátil em `performance`
+# mantém a ventoinha alta o dia todo para um ganho que só se vê em cargas
+# sustentadas — e essas escolhem-se com `delonix-tune profile lab`.
+set -uo pipefail
+
+PP=/sys/firmware/acpi/platform_profile
+tem_corrente() {
+    local f
+    for f in /sys/class/power_supply/A{C,DP}*/online; do
+        [[ -r $f ]] && [[ $(cat "$f") == 1 ]] && return 0
+    done
+    return 1
+}
+
+escolher() {
+    local desejado=$1 disponiveis
+    [[ -w $PP ]] || return 0
+    disponiveis=$(cat "${PP}_choices" 2>/dev/null || echo "")
+    # Os nomes variam entre fabricantes: uns dão `quiet`, outros `low-power`.
+    for p in $desejado; do
+        [[ " $disponiveis " == *" $p "* ]] && { echo "$p" >"$PP" 2>/dev/null; return 0; }
+    done
+}
+
+if tem_corrente; then
+    escolher "balanced balanced-performance"
+    echo powersave >/sys/module/pcie_aspm/parameters/policy 2>/dev/null || true
+else
+    # Em bateria: o perfil mais silencioso que o firmware ofereça, e o ASPM no
+    # máximo de poupança. `powersupersave` desliga mais estados de ligação; em
+    # bateria a latência extra não se nota e a diferença de consumo sim.
+    escolher "quiet low-power balanced"
+    echo powersupersave >/sys/module/pcie_aspm/parameters/policy 2>/dev/null || true
+fi
+
+# O tuned trata do CPU; aqui só se garante que o perfil certo está activo — se
+# alguém trocou à mão, respeita-se.
+exit 0
