@@ -170,7 +170,7 @@ fi
 ##############################################################################
 # o fluxo
 ##############################################################################
-[[ ${1:-} == --clean ]] && { log "a apagar tudo menos a ISO"; apagar_arvore "$ARVORE"; rm -rf "$ROOTFS" "$CACHE"/build.* "$CACHE"/*.squashfs; }
+[[ ${1:-} == --clean ]] && { log "a apagar tudo menos a ISO"; apagar_arvore "$ARVORE"; apagar_arvore "$ROOTFS"; rm -rf "$CACHE"/build.* "$CACHE"/*.squashfs; }
 
 mkdir -p "$CACHE" "$SAIDA"
 for t in xorriso unsquashfs mksquashfs curl unshare dpkg-deb; do
@@ -204,7 +204,12 @@ if [[ ! -f $CACHE/build.rootfs ]]; then
     apagar_arvore "$ARVORE"; mkdir -p "$ARVORE"
     xorriso -osirrox on -indev "$ISO" -extract / "$ARVORE" 2>&1 | tail -1
     chmod -R u+w "$ARVORE"
-    cp "$ARVORE/$SFS" "$CACHE/base.squashfs"
+    # `install` em vez de `cp`: o cp dá ao destino o modo da ORIGEM, e a origem
+    # veio de uma ISO — 444. Na tentativa seguinte o destino de 444 recusa ser
+    # sobrescrito, e o erro aparece a meio de uma fase que já custou a descarga
+    # toda. É a terceira cara do mesmo defeito neste script; agora o modo é
+    # dito em vez de herdado.
+    install -m 644 "$ARVORE/$SFS" "$CACHE/base.squashfs"
     rm -f "$ARVORE/$SFS"
     echo "$SFS" > "$CACHE/caminho-squashfs"
 
@@ -224,7 +229,7 @@ if [[ ! -f $CACHE/build.rootfs ]]; then
            }' > "$CACHE/nos-de-dispositivo"
     etapa "$(wc -l < "$CACHE/nos-de-dispositivo") nós de dispositivo guardados para a remontagem"
 
-    rm -rf "$ROOTFS"
+    apagar_arvore "$ROOTFS"
     sem_root "$0" --interno desempacotar 2>&1 | tail -3
     etapa "rootfs: $(du -sh --apparent-size "$ROOTFS" 2>/dev/null | cut -f1)"
     touch "$CACHE/build.rootfs"
@@ -274,7 +279,7 @@ sem_root "$0" --interno empacotar 2>&1 | tail -4
 
 SFS=$(cat "$CACHE/caminho-squashfs")
 mkdir -p "$(dirname "$ARVORE/$SFS")"
-cp "$CACHE/novo.squashfs" "$ARVORE/$SFS"
+install -m 644 "$CACHE/novo.squashfs" "$ARVORE/$SFS"
 # O casper lê este ficheiro para mostrar o tamanho na instalação; se mentir, a
 # barra de progresso do instalador mente com ele.
 du -sx --block-size=1 "$ROOTFS" | cut -f1 > "$ARVORE/${SFS%.squashfs}.size" 2>/dev/null || true
