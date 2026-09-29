@@ -68,6 +68,14 @@ erro(){ printf '\n%s✗ %s%s\n\n' "$VRM" "$*" "$RST" >&2; exit 1; }
 # rootfs passa por aqui.
 sem_root(){ unshare --map-auto --map-root-user --mount --pid --fork "$@"; }
 
+# Apagar uma árvore extraída de uma ISO não é `rm -rf`. O xorriso reproduz os
+# modos da imagem, e numa ISO TUDO é só de leitura — ficheiros e directórios. O
+# `rm` falha por falta de escrita no PAI, não no ficheiro, e a mensagem aponta
+# para o ficheiro errado. Custou-me duas tentativas: a primeira morreu a apagar
+# o squashfs depois da extracção, a segunda a apagar a árvore que a primeira
+# deixou para trás.
+apagar_arvore(){ [[ -d $1 ]] && chmod -R u+w "$1" 2>/dev/null; rm -rf "$1"; }
+
 ##############################################################################
 # --interno: os troços que já correm DENTRO do namespace.
 ##############################################################################
@@ -162,7 +170,7 @@ fi
 ##############################################################################
 # o fluxo
 ##############################################################################
-[[ ${1:-} == --clean ]] && { log "a apagar tudo menos a ISO"; rm -rf "$ROOTFS" "$ARVORE" "$CACHE"/build.* "$CACHE"/*.squashfs; }
+[[ ${1:-} == --clean ]] && { log "a apagar tudo menos a ISO"; apagar_arvore "$ARVORE"; rm -rf "$ROOTFS" "$CACHE"/build.* "$CACHE"/*.squashfs; }
 
 mkdir -p "$CACHE" "$SAIDA"
 for t in xorriso unsquashfs mksquashfs curl unshare dpkg-deb; do
@@ -193,8 +201,9 @@ if [[ ! -f $CACHE/build.rootfs ]]; then
     [[ -n $SFS ]] || erro "não encontrei nenhum .squashfs dentro da ISO"
     etapa "encontrado: $SFS"
 
-    rm -rf "$ARVORE"; mkdir -p "$ARVORE"
+    apagar_arvore "$ARVORE"; mkdir -p "$ARVORE"
     xorriso -osirrox on -indev "$ISO" -extract / "$ARVORE" 2>&1 | tail -1
+    chmod -R u+w "$ARVORE"
     cp "$ARVORE/$SFS" "$CACHE/base.squashfs"
     rm -f "$ARVORE/$SFS"
     echo "$SFS" > "$CACHE/caminho-squashfs"
