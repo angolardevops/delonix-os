@@ -186,8 +186,40 @@ if [[ ! -f $CACHE/build.iso ]]; then
     etapa "$(( ${TAM:-0} / 1048576 )) MB · $ISO_URL"
     [[ -f $ISO ]] && etapa "a retomar de $(( $(stat -c%s "$ISO") / 1048576 )) MB"
     curl -L -C - --retry 10 --retry-delay 15 --retry-all-errors -o "$ISO" "$ISO_URL"
-    [[ -n ${TAM:-} && $(stat -c%s "$ISO") -eq $TAM ]] ||
-        erro "a ISO ficou incompleta — corre outra vez, retoma de onde parou"
+
+    # O TAMANHO NÃO PROVA NADA. Medido, e custou uma descarga inteira mais uma
+    # fase de desempacotamento: esta ISO chegou com o tamanho exacto ao byte e
+    # o conteúdo errado —
+    #
+    #   publicada    98666287ca5afae215def4804aca479bf3b439e028bc8f4e4d8ecddb…
+    #   descarregada 6e30bae26ec6ee203014f7845d1deccd9d9c6d7cbd6d0ad338ad4f2d…
+    #
+    # A descarga foi retomada várias vezes; o `-C -` repõe o tamanho mas não
+    # garante que os bytes anteriores estivessem certos. O sintoma só apareceu
+    # três fases depois, como «zstd uncompress failed with error code 10» no
+    # meio do unsquashfs — um erro que não faz pensar em rede nenhuma.
+    #
+    # O projecto publica SHA256SUMS.txt. É isso que decide.
+    log "a verificar a integridade"
+    esperado=$(curl -s --max-time 30 "${ISO_URL%/*}/SHA256SUMS.txt" |
+               awk -v f="${ISO_URL##*/}" '$2 == f || $2 == "*" f {print $1; exit}')
+    if [[ -z $esperado ]]; then
+        etapa "sem SHA256SUMS.txt no mirror — só posso conferir o tamanho"
+        [[ -n ${TAM:-} && $(stat -c%s "$ISO") -eq $TAM ]] ||
+            erro "a ISO ficou incompleta — corre outra vez, retoma de onde parou"
+    else
+        etapa "a somar $(( $(stat -c%s "$ISO") / 1048576 )) MB…"
+        obtido=$(sha256sum "$ISO" | cut -d" " -f1)
+        if [[ $obtido != "$esperado" ]]; then
+            printf '    esperado %s\n    obtido   %s\n' "$esperado" "$obtido" >&2
+            # Apagar é deliberado: deixá-la em disco faz a execução seguinte
+            # «retomar» um ficheiro corrompido do tamanho certo, e nunca mais
+            # sai daí.
+            rm -f "$ISO"
+            erro "a ISO veio corrompida — apagada; corre outra vez para a trazer de novo"
+        fi
+        etapa "SHA256 confere"
+    fi
     touch "$CACHE/build.iso"
 fi
 
